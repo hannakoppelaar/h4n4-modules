@@ -1,0 +1,27 @@
+{
+  "slug": "h4n4-modules",
+  "name": "h4n4 modules",
+  "version": "2.1.0",
+  "license": "GPL-3.0-or-later",
+  "brand": "h4n4",
+  "author": "Hanna Koppelaar",
+  "authorEmail": "",
+  "authorUrl": "",
+  "pluginUrl": "",
+  "manualUrl": "",
+  "sourceUrl": "",
+  "donateUrl": "",
+  "changelogUrl": "",
+  "modules": [
+    {
+      "slug": "xen-qnt",
+      "name": "Xen Quantizer",
+      "description": "Polyphonic Scala Quantizer",
+      "tags": [
+        "quantizer",
+        "microtonal",
+	"polyphonic"
+      ]
+    }
+  ]
+}
