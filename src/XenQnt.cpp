@@ -141,7 +141,7 @@ struct XenQnt : Module {
 			periodOffset = voltage;
 		}
 
-		// Now compute the negative voltages (needs a bit of tweaking of the centVals list)
+		// Now compute the negative voltages (requires a bit of tweaking of the centVals list)
 		list<float> copyCentVals(centVals);
 		voltage = 0.f;
 		periodOffset = 0.f;
