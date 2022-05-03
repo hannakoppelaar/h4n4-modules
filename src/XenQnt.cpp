@@ -30,8 +30,8 @@ struct XenQnt : Module {
 		LIGHTS_LEN
 	};
 
-	const float MAX_VOLT = 6.f; // 17 kHz (if 0 V corresponds with middle C)
 	const float MIN_VOLT = -4.f; // 16 Hz
+	const float MAX_VOLT = 6.f; // 17 kHz (if 0 V corresponds with middle C)
 
 	// the vector of all allowed pitches/voltages in the tuning 
 	vector<float> pitches;
@@ -129,12 +129,14 @@ struct XenQnt : Module {
 		float voltage = 0.f;
 		// the offset to indicate in which period (e.g. octave for octave-repeating tunings) we are
 		float periodOffset = 0.f; 
-		while (voltage <= MAX_VOLT) {
+		bool done = false;
+		while (!done) {
 			for (auto tone = centVals.begin(); tone != centVals.end(); tone++) {
 				voltage = periodOffset + *tone/1200;
 				if (voltage <= MAX_VOLT) {
 					voltages.push_back(voltage);
 				} else {
+					done = true;
 					break;
 				}
 			}
@@ -148,12 +150,14 @@ struct XenQnt : Module {
 		float period = copyCentVals.back();
 		copyCentVals.pop_back();
 		copyCentVals.push_front(0.f);
-		while (voltage >= MIN_VOLT) {
+		done = false;
+		while (!done) {
 			for (auto tone = copyCentVals.rbegin(); tone != copyCentVals.rend(); tone++) {
 				voltage = periodOffset + (*tone - period)/1200;
 				if (voltage >= MIN_VOLT) {
 					voltages.push_front(voltage);
 				} else {
+					done = true;
 					break;
 				}
 			}
