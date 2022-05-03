@@ -96,6 +96,8 @@ struct XenQnt : Module {
 		auto ceil = lower_bound(pitches.begin(), pitches.end(), v);
 		if (ceil == pitches.begin()) {
 			return *ceil;
+		} else if (ceil == pitches.end()) {
+			return *(ceil - 1);
 		} else {
 			auto floor = ceil - 1;
 			if ((*ceil - v) > (v - *floor)) {
