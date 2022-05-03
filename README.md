@@ -8,7 +8,7 @@ To build, make sure the environment variable RACK_DIR points to the VCV Rack 2.0
 <pre>
 git clone https://github.com/hannakoppelaar/vcv-modules.git
 cd vcv-modules
->make install
+make install
 </pre>
 
 This will build the plugins and copy them to your VCV plugins folder. The plugins should then be available when you (re-)start VCV Rack.
