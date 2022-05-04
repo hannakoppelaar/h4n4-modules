@@ -1,3 +1,17 @@
+/**
+ * Copyright 2022 Hanna Koppelaar
+ *
+ * This file is part of the h4h4 collection of VCV modules. This collection is free software: you can
+ * redistribute it and/or modify it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+ *
+ * This software is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even
+ * the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License
+ * for more details.
+ *
+ * You should have received a copy of the GNU General Public License along with Foobar. If not,
+ * see <https://www.gnu.org/licenses/>.
+ */
 #include "plugin.hpp"
 #include <osdialog.h>
 #include "tuning/Tunings.h"
@@ -47,11 +61,11 @@ struct XenQnt : Module {
 	XenQnt() {
 		config(PARAMS_LEN, INPUTS_LEN, OUTPUTS_LEN, LIGHTS_LEN);
 		configInput(CV_INPUT, "CV");
-		configInput(PITCH_INPUT, "Input");
-		configOutput(PITCH_OUTPUT, "Output");
+		configInput(PITCH_INPUT, "");
+		configOutput(PITCH_OUTPUT, "1 V/oct");
 		configBypass(PITCH_INPUT, PITCH_OUTPUT);
 
-		// Config the LED
+		// Config the LEDs
 		for (int i = 0; i < _MATRIX_SIZE; i++) {
 			configButton(STEP_PARAMS + i);
 		}
@@ -70,19 +84,21 @@ struct XenQnt : Module {
 		outputs[PITCH_OUTPUT].setChannels(numChannels);
 
 		time += args.sampleTime;
-		if (time > 1.f) {
+		if (time > 1.f/60) {
 			time = 0.f;
 		}
 
 		// TODO update the lights (this is just demo code for now)
-		for (int i = 0; i < _MATRIX_SIZE; i++) {
-			float brightness = 0.05f;
-			if (i % 2 == 0) brightness = 1.f;
-			if (i % 3 == 0) brightness = 0.f;
-			if (i % 5 == 0) {
-				brightness = 0.5f;
+		if (time == 0) {
+			for (int i = 0; i < _MATRIX_SIZE; i++) {
+				float brightness = 0.05f;
+				if (i % 2 == 0) brightness = 1.f;
+				if (i % 3 == 0) brightness = 0.f;
+				if (i % 5 == 0) {
+					brightness = 0.5f;
+				}
+				lights[STEP_LIGHTS + i].setBrightness(brightness);
 			}
-			lights[STEP_LIGHTS + i].setBrightness(brightness);
 		}
 	}
 
@@ -122,6 +138,16 @@ struct XenQnt : Module {
 		}
 		updateTuning(centVals);
 	}
+
+	/*
+	TODO: rewrite pitches to hold structs with the voltage as float and an int that refers to its position
+	in the tuning
+	*/
+
+	/*
+	TODO: add "enabled" flag to every tone of the scale
+	*/
+
 
 	void updateTuning(list<float> centVals) {
 
@@ -171,10 +197,7 @@ struct XenQnt : Module {
 		for (auto v = voltages.begin(); v != voltages.end(); v++) {
 			pitches.push_back(*v);
 		}
-		scale.clear();
-		for (auto v = centVals.begin(); v != centVals.end(); v++) {
-			scale.push_back(*v);
-		}
+		scale = centVals;
 	}
 
 	// set 12 equal as initial tuning 
