@@ -68,7 +68,7 @@ struct XenQnt : Module {
     vector<TuningStep> pitches;
 
     // the tuning in cents
-    list<ScaleStep> scale;
+    vector<ScaleStep> scale;
 
     // last-seen dir with scala files
     std::string scalaDir;
@@ -92,13 +92,6 @@ struct XenQnt : Module {
 
     void process(const ProcessArgs &args) override {
 
-        int numChannels = inputs[PITCH_INPUT].getChannels();
-
-        for (int i = 0; i < numChannels; i++) {
-            TuningStep step = getPitch(inputs[PITCH_INPUT].getVoltage(i));
-            outputs[PITCH_OUTPUT].setVoltage(step.voltage, i);
-        }
-        outputs[PITCH_OUTPUT].setChannels(numChannels);
 
         time += args.sampleTime;
         if (time > 1.f / 60) {
@@ -119,6 +112,18 @@ struct XenQnt : Module {
                 }
             }
         }
+
+        int numChannels = inputs[PITCH_INPUT].getChannels();
+        for (int i = 0; i < numChannels; i++) {
+            TuningStep step = getPitch(inputs[PITCH_INPUT].getVoltage(i));
+            outputs[PITCH_OUTPUT].setVoltage(step.voltage, i);
+
+            //
+            int lightIndex = (step.scaleIndex + 1) % scale.size();
+            lights[STEP_LIGHTS + lightIndex].setBrightness(1.f);
+        }
+        outputs[PITCH_OUTPUT].setChannels(numChannels);
+
     }
 
     void setScalaDir(std::string scalaDir) {
@@ -129,7 +134,9 @@ struct XenQnt : Module {
     TuningStep getPitch(double v) {
 
         // compare function for lower_bound
-        auto comp = [](const TuningStep& step, double voltage) { return step.voltage < voltage; };
+        auto comp = [](const TuningStep & step, double voltage) {
+            return step.voltage < voltage;
+        };
 
         auto ceil = lower_bound(pitches.begin(), pitches.end(), v, comp);
         if (ceil == pitches.begin()) {
@@ -147,7 +154,7 @@ struct XenQnt : Module {
     }
 
     void updateTuning(char *scalaFile) {
-        list<ScaleStep> scaleSteps;
+        vector<ScaleStep> scaleSteps;
         try {
             Tuning tuning = Tuning(readSCLFile(scalaFile));
             vector<Tone> tones = tuning.scale.tones;
@@ -162,7 +169,7 @@ struct XenQnt : Module {
     }
 
 
-    void updateTuning(list<ScaleStep> scaleSteps) {
+    void updateTuning(vector<ScaleStep> scaleSteps) {
 
         // Compute positive voltages
         list<TuningStep> voltages;
