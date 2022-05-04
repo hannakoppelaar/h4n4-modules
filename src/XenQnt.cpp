@@ -107,7 +107,7 @@ struct XenQnt : Module {
                     if (step->enabled) {
                         lights[STEP_LIGHTS + index].setBrightness(0.7);
                     } else {
-                        lights[STEP_LIGHTS + index].setBrightness(0.2);
+                        lights[STEP_LIGHTS + index].setBrightness(0.1);
                     }
                 }
             }
@@ -167,7 +167,6 @@ struct XenQnt : Module {
         }
         updateTuning(scaleSteps);
     }
-
 
     void updateTuning(vector<ScaleStep> scaleSteps) {
 
@@ -234,6 +233,19 @@ struct XenQnt : Module {
         for (int i = 1; i <= 12; i++) {
             scale.push_back({ i * 100.f, true });
         }
+    }
+
+    // enable random notes in the selected tuning
+    void onRandomize() override {
+        for (auto step = scale.begin(); step != scale.end(); step++) {
+            int coin = rand() % 100;
+            if (coin >= 50) {
+                step->enabled = true;
+            } else {
+                step->enabled = false;
+            }
+        }
+        updateTuning(scale);
     }
 
     // VCV (de-)serialization callbacks
