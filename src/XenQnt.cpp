@@ -134,7 +134,9 @@ struct XenQnt : Module {
                     outputs[PITCH_OUTPUT].setVoltage(0.f, i);
                 } else {
                     outputs[PITCH_OUTPUT].setVoltage(step->voltage, i);
-                    setOrangeLight(scaleToLightIdx(step->scaleIndex), 0.7);
+                    if (time == 0) {
+                        setOrangeLight(scaleToLightIdx(step->scaleIndex), 0.7);
+                    }
                 }
             }
             outputs[PITCH_OUTPUT].setChannels(numChannels);
