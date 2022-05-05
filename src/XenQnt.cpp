@@ -98,6 +98,8 @@ struct XenQnt : Module {
             time = 0.f;
         }
 
+        // FIXME the lights should be reset when the tuning is updated
+
         if (time == 0) {
             for (auto step = scale.begin(); step != scale.end(); step++) {
                 // this weird index accounts for the fact that the last value in
@@ -118,7 +120,7 @@ struct XenQnt : Module {
             TuningStep step = getPitch(inputs[PITCH_INPUT].getVoltage(i));
             outputs[PITCH_OUTPUT].setVoltage(step.voltage, i);
 
-            //
+            // FIXME put the step -> lightIndex mapping in a separate inline function
             int lightIndex = (step.scaleIndex + 1) % scale.size();
             lights[STEP_LIGHTS + lightIndex].setBrightness(1.f);
         }
@@ -192,7 +194,7 @@ struct XenQnt : Module {
             periodOffset = voltage;
         }
 
-        // Now compute the negative voltages
+        // Now compute the non-positive voltages
         voltage = 0.f;
         periodOffset = 0.f;
         double period = scaleSteps.back().cents;
@@ -219,20 +221,24 @@ struct XenQnt : Module {
             pitches.push_back(*v);
         }
         scale = scaleSteps;
+
+        // And seset the lights
+        resetLights();
+    }
+
+    void resetLights() {
+        for (int i = 0; i < _MATRIX_SIZE; i++) {
+            lights[STEP_LIGHTS + i].setBrightness(0.f);
+        }
     }
 
     // set 12 equal as initial tuning
     void onReset() override {
-        pitches.clear();
         scale.clear();
-        double voltage = MIN_VOLT;
-        while (voltage <= MAX_VOLT) {
-            pitches.push_back({ voltage, (int)floor(voltage) % 12 });
-            voltage += 1 / 12.0;
-        }
         for (int i = 1; i <= 12; i++) {
             scale.push_back({ i * 100.f, true });
         }
+        updateTuning(scale);
     }
 
     // enable random notes in the selected tuning
