@@ -106,15 +106,12 @@ struct XenQnt : Module {
         if (time == 0) {
             resetLights();
             for (auto step = scale.begin(); step != scale.end(); step++) {
-                // this weird index accounts for the fact that the last value in
-                // the scala file corresponds with the first note of the tuning
-                // FIXME put the step -> lightIndex mapping in a separate inline function
-                int index = (distance(scale.begin(), step) + 1) % scale.size();
+                int index = scaleToLightIdx(distance(scale.begin(), step));
                 if (index < _MATRIX_SIZE) {
                     if (step->enabled) {
-                        setRedLight(index, 1.f);
+                        setRedLight(index, 0.9);
                     } else {
-                        setRedLight(index, 0.2);
+                        setRedLight(index, 0.1);
                     }
                 }
                 if (stepTriggers[index].process(params[STEP_PARAMS + index].getValue())) {
@@ -129,21 +126,26 @@ struct XenQnt : Module {
         }
 
         int numChannels = inputs[PITCH_INPUT].getChannels();
-        for (int i = 0; i < numChannels; i++) {
-            TuningStep *step = getPitch(inputs[PITCH_INPUT].getVoltage(i));
-            if (!step) {
-                // No enabled steps: set output voltage to zero
-                outputs[PITCH_OUTPUT].setVoltage(0.f, i);
-            } else {
-                outputs[PITCH_OUTPUT].setVoltage(step->voltage, i);
-
-                // FIXME put the step -> lightIndex mapping in a separate inline function
-                int lightIndex = (step->scaleIndex + 1) % scale.size();
-                setOrangeLight(lightIndex, 1.f);
+        if (outputs[PITCH_OUTPUT].isConnected()) {
+            for (int i = 0; i < numChannels; i++) {
+                TuningStep *step = getPitch(inputs[PITCH_INPUT].getVoltage(i));
+                if (!step) {
+                    // No enabled steps: set output voltage to zero
+                    outputs[PITCH_OUTPUT].setVoltage(0.f, i);
+                } else {
+                    outputs[PITCH_OUTPUT].setVoltage(step->voltage, i);
+                    setOrangeLight(scaleToLightIdx(step->scaleIndex), 0.7);
+                }
             }
+            outputs[PITCH_OUTPUT].setChannels(numChannels);
         }
-        outputs[PITCH_OUTPUT].setChannels(numChannels);
 
+    }
+
+    inline int scaleToLightIdx(int scaleIdx) {
+        // This weird index accounts for the fact that the last value in
+        // the scala file corresponds with the first note of the tuning
+        return (scaleIdx + 1) % scale.size();
     }
 
     void setRedLight(int id, float brightness) {
@@ -230,7 +232,7 @@ struct XenQnt : Module {
                 }
             }
             if (!enabledSteps) break;
-            periodOffset += period/1200;
+            periodOffset += period / 1200;
         }
 
         // Now compute the non-positive voltages
@@ -239,7 +241,7 @@ struct XenQnt : Module {
         done = false;
         while (!done && enabledSteps) {
             for (auto step = scaleSteps.rbegin(); step != scaleSteps.rend(); step++) {
-                int index = distance(scaleSteps.rend(), step);
+                int index = distance(step, scaleSteps.rend()) - 1;
                 if (step->enabled) {
                     voltage = periodOffset + (step->cents - period) / 1200;
                     if (voltage >= MIN_VOLT) {
@@ -250,7 +252,7 @@ struct XenQnt : Module {
                     }
                 }
             }
-            periodOffset -= period/1200;
+            periodOffset -= period / 1200;
         }
 
         // Finally update the tuning
@@ -364,10 +366,10 @@ struct MenuItemLoadScalaFile : MenuItem {
 
 
 struct RedOrangeLight : GrayModuleLightWidget {
-        RedOrangeLight() {
-                addBaseColor(SCHEME_RED);
-                addBaseColor(SCHEME_ORANGE);
-        }
+    RedOrangeLight() {
+        addBaseColor(SCHEME_RED);
+        addBaseColor(SCHEME_ORANGE);
+    }
 };
 
 
