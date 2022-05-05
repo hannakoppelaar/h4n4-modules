@@ -57,7 +57,7 @@ struct XenQnt : Module {
         OUTPUTS_LEN
     };
     enum LightId {
-        ENUMS(STEP_LIGHTS, _MATRIX_SIZE),
+        ENUMS(STEP_LIGHTS, _MATRIX_SIZE * 2), // a red and a white light per step
         LIGHTS_LEN
     };
 
@@ -104,15 +104,17 @@ struct XenQnt : Module {
         }
 
         if (time == 0) {
+            resetLights();
             for (auto step = scale.begin(); step != scale.end(); step++) {
                 // this weird index accounts for the fact that the last value in
                 // the scala file corresponds with the first note of the tuning
+                // FIXME put the step -> lightIndex mapping in a separate inline function
                 int index = (distance(scale.begin(), step) + 1) % scale.size();
                 if (index < _MATRIX_SIZE) {
                     if (step->enabled) {
-                        lights[STEP_LIGHTS + index].setBrightness(1.f);
+                        setRedLight(index, 1.f);
                     } else {
-                        lights[STEP_LIGHTS + index].setBrightness(0.1);
+                        setRedLight(index, 0.2);
                     }
                 }
                 if (stepTriggers[index].process(params[STEP_PARAMS + index].getValue())) {
@@ -137,11 +139,19 @@ struct XenQnt : Module {
 
                 // FIXME put the step -> lightIndex mapping in a separate inline function
                 int lightIndex = (step->scaleIndex + 1) % scale.size();
-                lights[STEP_LIGHTS + lightIndex].setBrightness(1.f);
+                setOrangeLight(lightIndex, 1.f);
             }
         }
         outputs[PITCH_OUTPUT].setChannels(numChannels);
 
+    }
+
+    void setRedLight(int id, float brightness) {
+        lights[STEP_LIGHTS + id * 2].setBrightness(brightness);
+    }
+
+    void setOrangeLight(int id, float brightness) {
+        lights[STEP_LIGHTS + id * 2 + 1].setBrightness(brightness);
     }
 
     void setScalaDir(std::string scalaDir) {
@@ -250,14 +260,13 @@ struct XenQnt : Module {
         }
         scale = scaleSteps;
 
-        // And reset the lights
-        resetLights();
     }
 
 
     void resetLights() {
         for (int i = 0; i < _MATRIX_SIZE; i++) {
-            lights[STEP_LIGHTS + i].setBrightness(0.f);
+            setRedLight(i, 0.f);
+            setOrangeLight(i, 0.f);
         }
     }
 
@@ -354,6 +363,14 @@ struct MenuItemLoadScalaFile : MenuItem {
 };
 
 
+struct RedOrangeLight : GrayModuleLightWidget {
+        RedOrangeLight() {
+                addBaseColor(SCHEME_RED);
+                addBaseColor(SCHEME_ORANGE);
+        }
+};
+
+
 struct MatrixButton : app::SvgSwitch {
     MatrixButton() {
         momentary = true;
@@ -392,9 +409,9 @@ struct XenQntWidget : ModuleWidget {
             addParam(createParamCentered<MatrixButton> (mm2px(Vec(margin + column * distance,
                      verticalOffset + row * distance)),
                      module, module->STEP_PARAMS + i));
-            addChild(createLightCentered<SmallLight<RedLight>> (mm2px(Vec(margin + column * distance,
+            addChild(createLightCentered<SmallLight<RedOrangeLight>> (mm2px(Vec(margin + column * distance,
                      verticalOffset + row * distance)),
-                     module, module->STEP_LIGHTS + i));
+                     module, module->STEP_LIGHTS + i * 2));
         }
 
     }
