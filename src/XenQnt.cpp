@@ -73,6 +73,11 @@ struct XenQnt : Module {
     // last-seen dir with scala files
     std::string scalaDir;
 
+    // triggers to pick up button pushes
+    dsp::BooleanTrigger stepTriggers[_MATRIX_SIZE];
+
+    bool userPushed = false;
+
     float time = 0.f;
 
     XenQnt() {
@@ -98,8 +103,6 @@ struct XenQnt : Module {
             time = 0.f;
         }
 
-        // FIXME the lights should be reset when the tuning is updated
-
         if (time == 0) {
             for (auto step = scale.begin(); step != scale.end(); step++) {
                 // this weird index accounts for the fact that the last value in
@@ -107,22 +110,35 @@ struct XenQnt : Module {
                 int index = (distance(scale.begin(), step) + 1) % scale.size();
                 if (index < _MATRIX_SIZE) {
                     if (step->enabled) {
-                        lights[STEP_LIGHTS + index].setBrightness(0.7);
+                        lights[STEP_LIGHTS + index].setBrightness(1.f);
                     } else {
                         lights[STEP_LIGHTS + index].setBrightness(0.1);
                     }
                 }
+                if (stepTriggers[index].process(params[STEP_PARAMS + index].getValue())) {
+                    step->enabled = !step->enabled;
+                    userPushed = true;
+                }
+            }
+            if (userPushed) {
+                updateTuning();
+                userPushed = false;
             }
         }
 
         int numChannels = inputs[PITCH_INPUT].getChannels();
         for (int i = 0; i < numChannels; i++) {
-            TuningStep step = getPitch(inputs[PITCH_INPUT].getVoltage(i));
-            outputs[PITCH_OUTPUT].setVoltage(step.voltage, i);
+            TuningStep *step = getPitch(inputs[PITCH_INPUT].getVoltage(i));
+            if (!step) {
+                // No enabled steps: set output voltage to zero
+                outputs[PITCH_OUTPUT].setVoltage(0.f, i);
+            } else {
+                outputs[PITCH_OUTPUT].setVoltage(step->voltage, i);
 
-            // FIXME put the step -> lightIndex mapping in a separate inline function
-            int lightIndex = (step.scaleIndex + 1) % scale.size();
-            lights[STEP_LIGHTS + lightIndex].setBrightness(1.f);
+                // FIXME put the step -> lightIndex mapping in a separate inline function
+                int lightIndex = (step->scaleIndex + 1) % scale.size();
+                lights[STEP_LIGHTS + lightIndex].setBrightness(1.f);
+            }
         }
         outputs[PITCH_OUTPUT].setChannels(numChannels);
 
@@ -133,7 +149,11 @@ struct XenQnt : Module {
     }
 
     // binary search for the nearest allowable pitch
-    TuningStep getPitch(double v) {
+    TuningStep* getPitch(double v) {
+
+        if (pitches.size() == 0) {
+            return NULL;
+        }
 
         // compare function for lower_bound
         auto comp = [](const TuningStep & step, double voltage) {
@@ -142,15 +162,15 @@ struct XenQnt : Module {
 
         auto ceil = lower_bound(pitches.begin(), pitches.end(), v, comp);
         if (ceil == pitches.begin()) {
-            return *ceil;
+            return &*ceil;
         } else if (ceil == pitches.end()) {
-            return *(ceil - 1);
+            return &*(ceil - 1);
         } else {
             auto floor = ceil - 1;
             if ((ceil->voltage - v) > (v - floor->voltage)) {
-                return *floor;
+                return &*floor;
             } else {
-                return *ceil;
+                return &*ceil;
             }
         }
     }
@@ -170,18 +190,26 @@ struct XenQnt : Module {
         updateTuning(scaleSteps);
     }
 
+    void updateTuning() {
+        updateTuning(scale);
+    }
+
+
     void updateTuning(vector<ScaleStep> scaleSteps) {
 
         // Compute positive voltages
         list<TuningStep> voltages;
         double voltage = 0.f;
         // the offset to indicate in which period (e.g. octave for octave-repeating tunings) we are
+        double period = scaleSteps.back().cents;
         double periodOffset = 0.f;
         bool done = false;
+        bool enabledSteps = false;
         while (!done) {
             for (auto step = scaleSteps.begin(); step != scaleSteps.end(); step++) {
                 int index = distance(scaleSteps.begin(), step);
                 if (step->enabled) {
+                    enabledSteps = true;
                     voltage = periodOffset + step->cents / 1200;
                     if (voltage <= MAX_VOLT) {
                         voltages.push_back({voltage, index});
@@ -191,15 +219,15 @@ struct XenQnt : Module {
                     }
                 }
             }
-            periodOffset = voltage;
+            if (!enabledSteps) break;
+            periodOffset += period/1200;
         }
 
         // Now compute the non-positive voltages
         voltage = 0.f;
         periodOffset = 0.f;
-        double period = scaleSteps.back().cents;
         done = false;
-        while (!done) {
+        while (!done && enabledSteps) {
             for (auto step = scaleSteps.rbegin(); step != scaleSteps.rend(); step++) {
                 int index = distance(scaleSteps.rend(), step);
                 if (step->enabled) {
@@ -212,7 +240,7 @@ struct XenQnt : Module {
                     }
                 }
             }
-            periodOffset = voltage;
+            periodOffset -= period/1200;
         }
 
         // Finally update the tuning
@@ -222,9 +250,10 @@ struct XenQnt : Module {
         }
         scale = scaleSteps;
 
-        // And seset the lights
+        // And reset the lights
         resetLights();
     }
+
 
     void resetLights() {
         for (int i = 0; i < _MATRIX_SIZE; i++) {
@@ -238,7 +267,7 @@ struct XenQnt : Module {
         for (int i = 1; i <= 12; i++) {
             scale.push_back({ i * 100.f, true });
         }
-        updateTuning(scale);
+        updateTuning();
     }
 
     // enable random notes in the selected tuning
@@ -251,7 +280,7 @@ struct XenQnt : Module {
                 step->enabled = false;
             }
         }
-        updateTuning(scale);
+        updateTuning();
     }
 
     // VCV (de-)serialization callbacks
@@ -287,7 +316,7 @@ struct XenQnt : Module {
                 json_t *enabled = json_object_get(val, "enabled");
                 scale.push_back(ScaleStep{json_real_value(cents), json_boolean_value(enabled) });
             }
-            updateTuning(scale);
+            updateTuning();
         }
     }
 
@@ -360,8 +389,12 @@ struct XenQntWidget : ModuleWidget {
         for (int i = 0; i < _MATRIX_SIZE; i++) {
             row = i / numCols + 1;
             column = i % numCols;
-            addParam(createParamCentered<MatrixButton> (mm2px(Vec(margin + column * distance, verticalOffset + row * distance)), module, i));
-            addChild(createLightCentered<SmallLight<RedLight>> (mm2px(Vec(margin + column * distance, verticalOffset + row * distance)), module, i));
+            addParam(createParamCentered<MatrixButton> (mm2px(Vec(margin + column * distance,
+                     verticalOffset + row * distance)),
+                     module, module->STEP_PARAMS + i));
+            addChild(createLightCentered<SmallLight<RedLight>> (mm2px(Vec(margin + column * distance,
+                     verticalOffset + row * distance)),
+                     module, module->STEP_LIGHTS + i));
         }
 
     }
