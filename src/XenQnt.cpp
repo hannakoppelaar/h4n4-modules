@@ -68,7 +68,7 @@ struct XenQnt : Module {
     // the vector of all allowed pitches/voltages in the tuning
     vector<TuningStep> pitches;
 
-    // the vector of all allowed and enabled pitches/voltages in the tuning
+    // the vector of all enabled pitches/voltages
     vector<TuningStep> enabledPitches;
 
     // the tuning in cents
@@ -219,9 +219,9 @@ struct XenQnt : Module {
         }
     }
 
+    // This weird indexing accounts for the fact that the last value in
+    // the scala file corresponds with the first note of the tuning
     inline int scaleToLightIdx(int scaleIdx) {
-        // This weird index accounts for the fact that the last value in
-        // the scala file corresponds with the first note of the tuning
         return (scaleIdx + 1) % scale.size();
     }
 
@@ -245,7 +245,7 @@ struct XenQnt : Module {
         return getPitch(pitches, v);
     }
 
-    // binary search for the nearest allowable pitch
+    // get the nearest allowable pitch
     inline TuningStep* getPitch(vector<TuningStep> &pitches, double v) {
 
         if (pitches.size() == 0) {
@@ -299,8 +299,8 @@ struct XenQnt : Module {
         list<TuningStep> enabledVoltages;
         list<TuningStep> voltages;
         double voltage = 0.f;
-        // the offset to indicate in which period (e.g. octave for octave-repeating tunings) we are
         double period = scaleSteps.back().cents;
+        // the offset to indicate in which period (e.g. octave for octave-repeating tunings) we are
         double periodOffset = 0.f;
         bool done = false;
         while (!done) {
