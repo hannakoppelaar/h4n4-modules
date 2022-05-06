@@ -219,7 +219,7 @@ struct XenQnt : Module {
         }
     }
 
-    // This weird indexing accounts for the fact that the last value in
+    // This weird indexing is necessary because the last value in
     // the scala file corresponds with the first note of the tuning
     inline int scaleToLightIdx(int scaleIdx) {
         return (scaleIdx + 1) % scale.size();
