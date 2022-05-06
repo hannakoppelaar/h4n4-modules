@@ -58,7 +58,7 @@ struct XenQnt : Module {
         OUTPUTS_LEN
     };
     enum LightId {
-        ENUMS(STEP_LIGHTS, _MATRIX_SIZE * 2), // a red and a white light per step
+        ENUMS(STEP_LIGHTS, _MATRIX_SIZE * 2), // a red and an orange light per step
         LIGHTS_LEN
     };
 

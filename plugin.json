@@ -19,7 +19,6 @@
       "description": "Polyphonic Scala Quantizer",
       "tags": [
         "quantizer",
-        "microtonal",
 	"polyphonic"
       ]
     }
