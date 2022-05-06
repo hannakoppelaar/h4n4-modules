@@ -78,7 +78,11 @@ struct XenQnt : Module {
 
     bool userPushed = false;
 
+    bool error = false;
+
     float time = 0.f;
+    float blinkTime = 0.f;
+    int blinkCount = 0;
 
     XenQnt() {
         config(PARAMS_LEN, INPUTS_LEN, OUTPUTS_LEN, LIGHTS_LEN);
@@ -97,34 +101,48 @@ struct XenQnt : Module {
 
     void process(const ProcessArgs &args) override {
 
-
+        // FIXME check whether is this is the best way to set the refreshrate of the lights
         time += args.sampleTime;
         if (time > 1.f / 60) {
             time = 0.f;
         }
 
+        // Update the red lights
         if (time == 0) {
             resetLights();
-            for (auto step = scale.begin(); step != scale.end(); step++) {
-                int index = scaleToLightIdx(distance(scale.begin(), step));
-                if (index < _MATRIX_SIZE) {
-                    if (step->enabled) {
-                        setRedLight(index, 0.9);
-                    } else {
-                        setRedLight(index, 0.1);
+            // Blink a few times before we move on if there's an error in the scala input
+            if (error) {
+                blinkTime += 1.f / 60;
+                if (blinkTime > 1.f) {
+                    blinkCount++; blinkTime = 0.f;
+                }
+                setRedLight(0, blinkTime > 0.5 ? 0.f : 1.f);
+                if (blinkCount > 3) {
+                    error = false; blinkCount = 0; blinkTime = 0.f;
+                }
+            } else {
+                for (auto step = scale.begin(); step != scale.end(); step++) {
+                    int index = scaleToLightIdx(distance(scale.begin(), step));
+                    if (index < _MATRIX_SIZE) {
+                        if (step->enabled) {
+                            setRedLight(index, 0.9);
+                        } else {
+                            setRedLight(index, 0.1);
+                        }
+                    }
+                    if (stepTriggers[index].process(params[STEP_PARAMS + index].getValue())) {
+                        step->enabled = !step->enabled;
+                        userPushed = true;
                     }
                 }
-                if (stepTriggers[index].process(params[STEP_PARAMS + index].getValue())) {
-                    step->enabled = !step->enabled;
-                    userPushed = true;
+                if (userPushed) {
+                    updateTuning();
+                    userPushed = false;
                 }
-            }
-            if (userPushed) {
-                updateTuning();
-                userPushed = false;
             }
         }
 
+        // Process the pitch inputs and set the outputs and the the orange lights
         int numChannels = inputs[PITCH_INPUT].getChannels();
         if (outputs[PITCH_OUTPUT].isConnected()) {
             for (int i = 0; i < numChannels; i++) {
@@ -134,15 +152,15 @@ struct XenQnt : Module {
                     outputs[PITCH_OUTPUT].setVoltage(0.f, i);
                 } else {
                     outputs[PITCH_OUTPUT].setVoltage(step->voltage, i);
-                    if (time == 0) {
+                    if (time == 0 and !error) {
                         setOrangeLight(scaleToLightIdx(step->scaleIndex), 0.7);
                     }
                 }
             }
             outputs[PITCH_OUTPUT].setChannels(numChannels);
         }
-
     }
+
 
     inline int scaleToLightIdx(int scaleIdx) {
         // This weird index accounts for the fact that the last value in
@@ -199,7 +217,8 @@ struct XenQnt : Module {
                 scaleSteps.push_back({(*tone).cents, true});
             }
         } catch (const TuningError &e) {
-            // FIXME report error to user
+            error = true;
+            return;
         }
         updateTuning(scaleSteps);
     }
