@@ -74,6 +74,9 @@ struct XenQnt : Module {
     // the tuning in cents
     vector<ScaleStep> scale;
 
+    // backup tuning so we dont lose it when we connect cv
+    vector<ScaleStep> backupScale;
+
     // last-seen dir with scala files
     std::string scalaDir;
 
@@ -85,7 +88,9 @@ struct XenQnt : Module {
 
     bool userPushed = false;
 
-    float refreshTimer = 0.f;
+    bool cvConnected = false;
+
+    float lightUpdateTimer = 0.f;
     float cvScanTimer = 0.f;
 
     bool error = false;
@@ -109,9 +114,9 @@ struct XenQnt : Module {
 
     void process(const ProcessArgs &args) override {
 
-        refreshTimer += args.sampleTime;
-        if (refreshTimer > 1.f / FRAME_RATE) {
-            refreshTimer = 0.f;
+        lightUpdateTimer += args.sampleTime;
+        if (lightUpdateTimer > 1.f / FRAME_RATE) {
+            lightUpdateTimer = 0.f;
         }
         cvScanTimer += args.sampleTime;
         if (cvScanTimer > 1.f / 1000) {
@@ -119,25 +124,40 @@ struct XenQnt : Module {
         }
 
         // Process CV inputs and update the tuning accordingly (scan once per ms)
-        if (inputs[CV_INPUT].isConnected() && cvScanTimer == 0) {
-            int numChannels = inputs[CV_INPUT].getChannels();
-            vector<float> inputVolts;
-            for (int i = 0; i < numChannels; i++) {
-                inputVolts.push_back(inputs[CV_INPUT].getVoltage(i));
-            }
-            if (inputVolts != prevInputVolts) {
-                disableAllSteps();
-                for (auto v = inputVolts.begin(); v != inputVolts.end(); v++) {
-                    TuningStep *step = getPitch(*v);
-                    scale.at(step->scaleIndex).enabled = true;
+        if (inputs[CV_INPUT].isConnected()) {
+            if (cvScanTimer == 0) {
+                // Connection state change
+                if (!cvConnected) {
+                    prevInputVolts.clear();
+                    backupScale = scale;
+                    cvConnected = true;
                 }
+                int numChannels = inputs[CV_INPUT].getChannels();
+                vector<float> inputVolts;
+                for (int i = 0; i < numChannels; i++) {
+                    inputVolts.push_back(inputs[CV_INPUT].getVoltage(i));
+                }
+                if (inputVolts != prevInputVolts) {
+                    disableAllSteps();
+                    for (auto v = inputVolts.begin(); v != inputVolts.end(); v++) {
+                        TuningStep *step = getPitch(*v);
+                        scale.at(step->scaleIndex).enabled = true;
+                    }
+                    updateTuning();
+                    prevInputVolts = inputVolts;
+                }
+            }
+        } else {
+            // Connection state change
+            if (cvConnected) {
+                scale = backupScale;
                 updateTuning();
-                prevInputVolts = inputVolts;
+                cvConnected = false;
             }
         }
 
         // Update the red lights
-        if (refreshTimer == 0) {
+        if (lightUpdateTimer == 0) {
             resetLights();
             // Blink a few times before we move on if there's an error in the scala input
             if (error) {
@@ -184,7 +204,7 @@ struct XenQnt : Module {
                     outputs[PITCH_OUTPUT].setVoltage(0.f, i);
                 } else {
                     outputs[PITCH_OUTPUT].setVoltage(step->voltage, i);
-                    if (refreshTimer == 0 and !error) {
+                    if (lightUpdateTimer == 0 and !error) {
                         setOrangeLight(scaleToLightIdx(step->scaleIndex), 0.7);
                     }
                 }
