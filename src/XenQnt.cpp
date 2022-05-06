@@ -42,6 +42,7 @@ struct TuningStep {
 
 struct XenQnt : Module {
 
+    const int FRAME_RATE = 60;
 
     enum ParamId {
         ENUMS(STEP_PARAMS, _MATRIX_SIZE),
@@ -67,6 +68,9 @@ struct XenQnt : Module {
     // the vector of all allowed pitches/voltages in the tuning
     vector<TuningStep> pitches;
 
+    // the vector of all allowed and enabled pitches/voltages in the tuning
+    vector<TuningStep> enabledPitches;
+
     // the tuning in cents
     vector<ScaleStep> scale;
 
@@ -76,11 +80,15 @@ struct XenQnt : Module {
     // triggers to pick up button pushes
     dsp::BooleanTrigger stepTriggers[_MATRIX_SIZE];
 
+    // input one sample ago
+    vector<float> prevInputVolts;
+
     bool userPushed = false;
 
-    bool error = false;
+    float refreshTimer = 0.f;
+    float cvScanTimer = 0.f;
 
-    float time = 0.f;
+    bool error = false;
     float blinkTime = 0.f;
     int blinkCount = 0;
 
@@ -101,24 +109,48 @@ struct XenQnt : Module {
 
     void process(const ProcessArgs &args) override {
 
-        // FIXME check whether is this is the best way to set the refreshrate of the lights
-        time += args.sampleTime;
-        if (time > 1.f / 60) {
-            time = 0.f;
+        refreshTimer += args.sampleTime;
+        if (refreshTimer > 1.f / FRAME_RATE) {
+            refreshTimer = 0.f;
+        }
+        cvScanTimer += args.sampleTime;
+        if (cvScanTimer > 1.f / 1000) {
+            cvScanTimer = 0.f;
+        }
+
+        // Process CV inputs and update the tuning accordingly (scan once per ms)
+        if (inputs[CV_INPUT].isConnected() && cvScanTimer == 0) {
+            int numChannels = inputs[CV_INPUT].getChannels();
+            vector<float> inputVolts;
+            for (int i = 0; i < numChannels; i++) {
+                inputVolts.push_back(inputs[CV_INPUT].getVoltage(i));
+            }
+            if (inputVolts != prevInputVolts) {
+                disableAllSteps();
+                for (auto v = inputVolts.begin(); v != inputVolts.end(); v++) {
+                    TuningStep *step = getPitch(*v);
+                    scale.at(step->scaleIndex).enabled = true;
+                }
+                updateTuning();
+                prevInputVolts = inputVolts;
+            }
         }
 
         // Update the red lights
-        if (time == 0) {
+        if (refreshTimer == 0) {
             resetLights();
             // Blink a few times before we move on if there's an error in the scala input
             if (error) {
-                blinkTime += 1.f / 60;
+                blinkTime += 1.f / FRAME_RATE;
                 if (blinkTime > 1.f) {
-                    blinkCount++; blinkTime = 0.f;
+                    blinkCount++;
+                    blinkTime = 0.f;
                 }
                 setRedLight(0, blinkTime > 0.5 ? 0.f : 1.f);
                 if (blinkCount > 3) {
-                    error = false; blinkCount = 0; blinkTime = 0.f;
+                    error = false;
+                    blinkCount = 0;
+                    blinkTime = 0.f;
                 }
             } else {
                 for (auto step = scale.begin(); step != scale.end(); step++) {
@@ -146,13 +178,13 @@ struct XenQnt : Module {
         int numChannels = inputs[PITCH_INPUT].getChannels();
         if (outputs[PITCH_OUTPUT].isConnected()) {
             for (int i = 0; i < numChannels; i++) {
-                TuningStep *step = getPitch(inputs[PITCH_INPUT].getVoltage(i));
+                TuningStep *step = getEnabledPitch(inputs[PITCH_INPUT].getVoltage(i));
                 if (!step) {
-                    // No enabled steps: set output voltage to zero
+                    // Normally this means there were no enabled steps: set output voltage to zero
                     outputs[PITCH_OUTPUT].setVoltage(0.f, i);
                 } else {
                     outputs[PITCH_OUTPUT].setVoltage(step->voltage, i);
-                    if (time == 0 and !error) {
+                    if (refreshTimer == 0 and !error) {
                         setOrangeLight(scaleToLightIdx(step->scaleIndex), 0.7);
                     }
                 }
@@ -161,6 +193,11 @@ struct XenQnt : Module {
         }
     }
 
+    inline void disableAllSteps() {
+        for (auto s = scale.begin(); s != scale.end(); s++) {
+            s->enabled = false;
+        }
+    }
 
     inline int scaleToLightIdx(int scaleIdx) {
         // This weird index accounts for the fact that the last value in
@@ -180,8 +217,16 @@ struct XenQnt : Module {
         this->scalaDir = scalaDir;
     }
 
+    inline TuningStep* getEnabledPitch(double v) {
+        return getPitch(enabledPitches, v);
+    }
+
+    inline TuningStep* getPitch(double v) {
+        return getPitch(pitches, v);
+    }
+
     // binary search for the nearest allowable pitch
-    TuningStep* getPitch(double v) {
+    inline TuningStep* getPitch(vector<TuningStep> &pitches, double v) {
 
         if (pitches.size() == 0) {
             return NULL;
@@ -231,28 +276,27 @@ struct XenQnt : Module {
     void updateTuning(vector<ScaleStep> scaleSteps) {
 
         // Compute positive voltages
+        list<TuningStep> enabledVoltages;
         list<TuningStep> voltages;
         double voltage = 0.f;
         // the offset to indicate in which period (e.g. octave for octave-repeating tunings) we are
         double period = scaleSteps.back().cents;
         double periodOffset = 0.f;
         bool done = false;
-        bool enabledSteps = false;
         while (!done) {
             for (auto step = scaleSteps.begin(); step != scaleSteps.end(); step++) {
                 int index = distance(scaleSteps.begin(), step);
-                if (step->enabled) {
-                    enabledSteps = true;
-                    voltage = periodOffset + step->cents / 1200;
-                    if (voltage <= MAX_VOLT) {
-                        voltages.push_back({voltage, index});
-                    } else {
-                        done = true;
-                        break;
+                voltage = periodOffset + step->cents / 1200;
+                if (voltage <= MAX_VOLT) {
+                    if (step->enabled) {
+                        enabledVoltages.push_back({voltage, index});
                     }
+                    voltages.push_back({voltage, index});
+                } else {
+                    done = true;
+                    break;
                 }
             }
-            if (!enabledSteps) break;
             periodOffset += period / 1200;
         }
 
@@ -260,17 +304,18 @@ struct XenQnt : Module {
         voltage = 0.f;
         periodOffset = 0.f;
         done = false;
-        while (!done && enabledSteps) {
+        while (!done) {
             for (auto step = scaleSteps.rbegin(); step != scaleSteps.rend(); step++) {
                 int index = distance(step, scaleSteps.rend()) - 1;
-                if (step->enabled) {
-                    voltage = periodOffset + (step->cents - period) / 1200;
-                    if (voltage >= MIN_VOLT) {
-                        voltages.push_front({voltage, index});
-                    } else {
-                        done = true;
-                        break;
+                voltage = periodOffset + (step->cents - period) / 1200;
+                if (voltage >= MIN_VOLT) {
+                    if (step->enabled) {
+                        enabledVoltages.push_front({voltage, index});
                     }
+                    voltages.push_front({voltage, index});
+                } else {
+                    done = true;
+                    break;
                 }
             }
             periodOffset -= period / 1200;
@@ -281,8 +326,11 @@ struct XenQnt : Module {
         for (auto v = voltages.begin(); v != voltages.end(); v++) {
             pitches.push_back(*v);
         }
+        enabledPitches.clear();
+        for (auto v = enabledVoltages.begin(); v != enabledVoltages.end(); v++) {
+            enabledPitches.push_back(*v);
+        }
         scale = scaleSteps;
-
     }
 
 
