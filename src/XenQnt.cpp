@@ -200,6 +200,9 @@ struct XenQnt : Module {
         // Process the pitch inputs and set the outputs and the the orange lights
         int numChannels = inputs[PITCH_INPUT].getChannels();
         if (outputs[PITCH_OUTPUT].isConnected()) {
+            if (lightUpdateTimer == 0 and !error) {
+                dimOrangeLights();
+            }
             for (int i = 0; i < numChannels; i++) {
                 TuningStep *step = getEnabledPitch(inputs[PITCH_INPUT].getVoltage(i));
                 if (!step) {
@@ -208,7 +211,6 @@ struct XenQnt : Module {
                 } else {
                     outputs[PITCH_OUTPUT].setVoltage(step->voltage, i);
                     if (lightUpdateTimer == 0 and !error) {
-                        dimOrangeLights();
                         setOrangeLight(scaleToLightIdx(step->scaleIndex), 0.7);
                     }
                 }
@@ -358,7 +360,7 @@ struct XenQnt : Module {
     }
 
 
-    // Red lights
+    // dim red lights beyond the offset
     inline void dimRedLights(int offset) {
         for (int i = offset; i < _MATRIX_SIZE; i++) {
             setRedLight(i, 0.f);
