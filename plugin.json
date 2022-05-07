@@ -9,8 +9,8 @@
   "authorUrl": "",
   "pluginUrl": "",
   "manualUrl": "",
-  "sourceUrl": "",
-  "donateUrl": "",
+  "sourceUrl": "https://github.com/hannakoppelaar/vcv-modules",
+  "donateUrl": "https://paypal.me/hannakoppelaar",
   "changelogUrl": "",
   "modules": [
     {
