@@ -9,7 +9,7 @@
   "authorUrl": "",
   "pluginUrl": "",
   "manualUrl": "",
-  "sourceUrl": "https://github.com/hannakoppelaar/vcv-modules",
+  "sourceUrl": "https://github.com/hannakoppelaar/h4n4-modules",
   "donateUrl": "https://paypal.me/hannakoppelaar",
   "changelogUrl": "",
   "modules": [
@@ -18,8 +18,7 @@
       "name": "Xen Quantizer",
       "description": "Polyphonic Scala Quantizer",
       "tags": [
-        "quantizer",
-	"polyphonic"
+        "quantizer", "polyphonic"
       ]
     }
   ]
