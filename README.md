@@ -1,5 +1,5 @@
 # VCV Modules
-## Modules for the eurorack emulator [VCV Rack](https://www.vcvrack.com
+Modules for the eurorack emulator [VCV Rack](https://www.vcvrack.com
 
 ### [Xen Quantizer](#xen-qnt)
 ![Xen Quantizer](img/xen-qnt.png)
