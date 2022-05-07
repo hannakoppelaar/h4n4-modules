@@ -160,7 +160,7 @@ struct XenQnt : Module {
         if (lightUpdateTimer == 0) {
             // Blink a few times before we move on if there's an error in the scala input
             if (error) {
-                dimRedLights(0);
+                dimRedLightsFurtherDown(0);
                 dimOrangeLights();
                 blinkTime += 1.f / FRAME_RATE;
                 if (blinkTime > 1.f) {
@@ -189,7 +189,7 @@ struct XenQnt : Module {
                     }
                 }
                 // Dim the lights beyond the scale
-                dimRedLights(scale.size());
+                dimRedLightsFurtherDown(scale.size());
                 if (userPushed) {
                     updateTuning();
                     userPushed = false;
@@ -361,7 +361,7 @@ struct XenQnt : Module {
 
 
     // dim red lights beyond the offset
-    inline void dimRedLights(int offset) {
+    inline void dimRedLightsFurtherDown(int offset) {
         for (int i = offset; i < _MATRIX_SIZE; i++) {
             setRedLight(i, 0.f);
         }
