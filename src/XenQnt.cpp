@@ -358,6 +358,7 @@ struct XenQnt : Module {
     }
 
 
+    // Red lights
     inline void dimRedLights(int offset) {
         for (int i = offset; i < _MATRIX_SIZE; i++) {
             setRedLight(i, 0.f);
@@ -365,7 +366,7 @@ struct XenQnt : Module {
     }
 
     inline void dimOrangeLights() {
-        for (int i = 0; i < scale.size(); i++) {
+        for (int i = 0; i < _MATRIX_SIZE; i++) {
             setOrangeLight(i, 0.f);
         }
     }
