@@ -1,4 +1,4 @@
-# VCV Modules
+# H4N4 Modules
 A module collection for the eurorack emulator [VCV Rack](https://www.vcvrack.com)
 
 ### Xen Quantizer[](#xen-qnt)
@@ -10,8 +10,8 @@ A polyphonic quantizer module that supports any tuning that can be specified in 
 To build, make sure the environment variable RACK_DIR points to the VCV Rack 2.0 SDK directory. The SDK can be downloaded from the VCV Rack website. Then:
 
 <pre>
-git clone https://github.com/hannakoppelaar/vcv-modules.git
-cd vcv-modules
+git clone https://github.com/hannakoppelaar/h4n4-modules.git
+cd h4n4-modules
 make install
 </pre>
 
