@@ -1,7 +1,7 @@
 # VCV Modules
-Modules for the eurorack emulator [VCV Rack](https://www.vcvrack.com)
+A module collection for the eurorack emulator [VCV Rack](https://www.vcvrack.com)
 
-### [Xen Quantizer](#xen-qnt)
+### Xen Quantizer[](#xen-qnt)
 ![Xen Quantizer](img/xen-qnt.png)
 
 A polyphonic quantizer module that supports any tuning that can be specified in a [scala](https://huygens-fokker.org/scala/) file. Scala files are loaded via the context menu. Notes in the tuning can be turned on and off by clicking on the corresponding LED button. This can also be done by sending a polyphonic signal into the CV input.
