@@ -158,9 +158,10 @@ struct XenQnt : Module {
 
         // Update the red lights
         if (lightUpdateTimer == 0) {
-            resetLights();
             // Blink a few times before we move on if there's an error in the scala input
             if (error) {
+                dimRedLights(0);
+                dimOrangeLights();
                 blinkTime += 1.f / FRAME_RATE;
                 if (blinkTime > 1.f) {
                     blinkCount++;
@@ -187,6 +188,8 @@ struct XenQnt : Module {
                         userPushed = true;
                     }
                 }
+                // Dim the lights beyond the scale
+                dimRedLights(scale.size());
                 if (userPushed) {
                     updateTuning();
                     userPushed = false;
@@ -205,6 +208,7 @@ struct XenQnt : Module {
                 } else {
                     outputs[PITCH_OUTPUT].setVoltage(step->voltage, i);
                     if (lightUpdateTimer == 0 and !error) {
+                        dimOrangeLights();
                         setOrangeLight(scaleToLightIdx(step->scaleIndex), 0.7);
                     }
                 }
@@ -354,9 +358,14 @@ struct XenQnt : Module {
     }
 
 
-    void resetLights() {
-        for (int i = 0; i < _MATRIX_SIZE; i++) {
+    inline void dimRedLights(int offset) {
+        for (int i = offset; i < _MATRIX_SIZE; i++) {
             setRedLight(i, 0.f);
+        }
+    }
+
+    inline void dimOrangeLights() {
+        for (int i = 0; i < scale.size(); i++) {
             setOrangeLight(i, 0.f);
         }
     }
