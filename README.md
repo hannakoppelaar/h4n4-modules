@@ -9,7 +9,7 @@ A polyphonic quantizer module that supports any tuning that can be specified in 
 ## Building and installing from source
 To build from source, follow these steps:
 - Update your system to meet the [build requirements](https://vcvrack.com/manual/Building#Setting-up-your-development-environment) of VCV Rack.
-- Download a recent VCV Rack SDK (version 2) from their [download directory](https://vcvrack.com/downloads/).
+- Download and unpack a recent VCV Rack SDK (version 2) from their [download directory](https://vcvrack.com/downloads/).
 - Create an environment variable RACK_DIR that points to the new VCV Rack 2 SDK directory.
 - Then:
 
