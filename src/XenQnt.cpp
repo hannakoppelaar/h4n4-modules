@@ -460,6 +460,9 @@ struct MenuItemLoadScalaFile : MenuItem {
         if (path) {
             xenQntModule->setScalaDir(getParent(path));
             xenQntModule->updateTuning(path);
+            if (xenQntModule->cvConnected) {
+                xenQntModule->backupScale = xenQntModule->scale;
+            }
             free(path);
         }
     }
