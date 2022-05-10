@@ -259,7 +259,7 @@ struct XenQnt : Module {
         }
 
         // compare function for lower_bound
-        auto comp = [](const TuningStep & step, double voltage) {
+        auto comp = [](const TuningStep &step, double voltage) {
             return step.voltage < voltage;
         };
 
@@ -280,6 +280,10 @@ struct XenQnt : Module {
 
     void updateTuning(char *scalaFile) {
         vector<ScaleStep> scaleSteps;
+        // compare function for sort
+        auto comp = [](const ScaleStep &stepLeft, const ScaleStep &stepRight) {
+            return stepLeft.cents < stepRight.cents;
+        };
         try {
             Tuning tuning = Tuning(readSCLFile(scalaFile));
             vector<Tone> tones = tuning.scale.tones;
@@ -287,6 +291,8 @@ struct XenQnt : Module {
             for (auto tone = tones.begin(); tone != tones.end(); tone++) {
                 scaleSteps.push_back({(*tone).cents, true});
             }
+            // sort the scale, because the Scala spec allows for unsorted scale steps
+            sort(scaleSteps.begin(), scaleSteps.end(), comp);
         } catch (const TuningError &e) {
             error = true;
             return;
