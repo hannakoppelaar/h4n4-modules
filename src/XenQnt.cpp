@@ -446,7 +446,7 @@ struct MenuItemLoadScalaFile : MenuItem {
 
     inline bool exists(const char *fileName) {
         ifstream infile(fileName);
-        return infile.good();
+        return !infile.bad();
     }
 
     // Naive attempt to get the parent directory (we're stuck with C++11 for now)
