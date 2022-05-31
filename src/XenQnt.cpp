@@ -17,6 +17,9 @@
 #include "tuning/Tunings.h"
 #include "tuning/TuningsImpl.h"
 #include <iostream>
+#include <sys/types.h>
+#include <sys/stat.h>
+
 
 using namespace std;
 using namespace Tunings;
@@ -445,8 +448,14 @@ struct MenuItemLoadScalaFile : MenuItem {
     XenQnt *xenQntModule;
 
     inline bool exists(const char *fileName) {
-        ifstream infile(fileName);
-        return !infile.bad();
+        struct stat info;
+        if (stat(fileName, &info) != 0) {
+            return false;
+        } else if (info.st_mode & S_IFDIR) {
+            return true;
+        } else {
+            return false;
+        }
     }
 
     // Naive attempt to get the parent directory (we're stuck with C++11 for now)
