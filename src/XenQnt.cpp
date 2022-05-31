@@ -182,10 +182,10 @@ struct XenQnt : Module {
                         } else {
                             setRedLight(index, 0.1);
                         }
-                    }
-                    if (stepTriggers[index].process(params[STEP_PARAMS + index].getValue())) {
-                        step->enabled = !step->enabled;
-                        userPushed = true;
+                        if (stepTriggers[index].process(params[STEP_PARAMS + index].getValue())) {
+                            step->enabled = !step->enabled;
+                            userPushed = true;
+                        }
                     }
                 }
                 // Dim the lights beyond the scale
@@ -259,7 +259,7 @@ struct XenQnt : Module {
         }
 
         // compare function for lower_bound
-        auto comp = [](const TuningStep &step, double voltage) {
+        auto comp = [](const TuningStep & step, double voltage) {
             return step.voltage < voltage;
         };
 
@@ -281,7 +281,7 @@ struct XenQnt : Module {
     void updateTuning(char *scalaFile) {
         vector<ScaleStep> scaleSteps;
         // compare function for sort
-        auto comp = [](const ScaleStep &stepLeft, const ScaleStep &stepRight) {
+        auto comp = [](const ScaleStep & stepLeft, const ScaleStep & stepRight) {
             return stepLeft.cents < stepRight.cents;
         };
         try {
