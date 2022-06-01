@@ -11,7 +11,7 @@
   "manualUrl": "https://github.com/hannakoppelaar/h4n4-modules",
   "sourceUrl": "https://github.com/hannakoppelaar/h4n4-modules",
   "donateUrl": "https://paypal.me/hannakoppelaar",
-  "changelogUrl": "",
+  "changelogUrl": "https://github.com/hannakoppelaar/h4n4-modules/blob/main/CHANGELOG.md",
   "modules": [
     {
       "slug": "xen-qnt",
