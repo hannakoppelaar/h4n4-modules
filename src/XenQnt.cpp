@@ -447,7 +447,7 @@ struct XenQnt : Module {
 struct MenuItemLoadScalaFile : MenuItem {
     XenQnt *xenQntModule;
 
-    static bool exists(const char *fileName) {
+    static inline bool exists(const char *fileName) {
         struct stat info;
         if (stat(fileName, &info) != 0) {
             return false;
@@ -460,7 +460,7 @@ struct MenuItemLoadScalaFile : MenuItem {
 
     // Naive attempt to get the parent directory (we're stuck with C++11 for now)
     // It's okay if this fails, it's just more convenient if it works
-    static std::string getParent(char *fileName) {
+    static inline std::string getParent(char *fileName) {
         std::string fn = fileName;
         std::string candidate = fn.substr(0, fn.find_last_of("/\\"));
         if (exists(candidate.c_str())) {
