@@ -473,7 +473,7 @@ struct MenuItemLoadScalaFile : MenuItem {
     void onAction(const event::Action &e) override {
 #ifdef USING_CARDINAL_NOT_RACK
         XenQnt *xenQntModule = this->xenQntModule;
-        async_dialog_filebrowser(false, nullptr, xenQntModule->scalaDir.c_str(), "Load sample", [xenQntModule](char* path) {
+        async_dialog_filebrowser(false, nullptr, xenQntModule->scalaDir.c_str(), "Load Scala File", [xenQntModule](char* path) {
             pathSelected(xenQntModule, path);
         });
 #else
