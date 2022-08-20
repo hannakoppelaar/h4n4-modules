@@ -447,7 +447,7 @@ struct XenQnt : Module {
 struct MenuItemLoadScalaFile : MenuItem {
     XenQnt *xenQntModule;
 
-    inline bool exists(const char *fileName) {
+    static inline bool exists(const char *fileName) {
         struct stat info;
         if (stat(fileName, &info) != 0) {
             return false;
@@ -460,7 +460,7 @@ struct MenuItemLoadScalaFile : MenuItem {
 
     // Naive attempt to get the parent directory (we're stuck with C++11 for now)
     // It's okay if this fails, it's just more convenient if it works
-    inline std::string getParent(char *fileName) {
+    static inline std::string getParent(char *fileName) {
         std::string fn = fileName;
         std::string candidate = fn.substr(0, fn.find_last_of("/\\"));
         if (exists(candidate.c_str())) {
@@ -471,7 +471,18 @@ struct MenuItemLoadScalaFile : MenuItem {
     }
 
     void onAction(const event::Action &e) override {
+#ifdef USING_CARDINAL_NOT_RACK
+        XenQnt *xenQntModule = this->xenQntModule;
+        async_dialog_filebrowser(false, nullptr, xenQntModule->scalaDir.c_str(), "Load Scala File", [xenQntModule](char* path) {
+            pathSelected(xenQntModule, path);
+        });
+#else
         char *path = osdialog_file(OSDIALOG_OPEN, xenQntModule->scalaDir.c_str(), NULL, NULL);
+        pathSelected(xenQntModule, path);
+#endif
+    }
+
+    static void pathSelected(XenQnt *xenQntModule, char* path) {
         if (path) {
             xenQntModule->setScalaDir(getParent(path));
             xenQntModule->updateTuning(path);
