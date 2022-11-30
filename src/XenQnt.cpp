@@ -462,6 +462,13 @@ struct XenQnt : Module {
 };
 
 
+struct MenuItemDisableAllNotes : MenuItem {
+    XenQnt *xenQntModule;
+    void onAction(const event::Action &e) override {
+        xenQntModule->disableAllSteps();
+    }
+};
+
 
 struct MenuItemLoadScalaFile : MenuItem {
     XenQnt *xenQntModule;
@@ -583,9 +590,13 @@ struct XenQntWidget : ModuleWidget {
 
         menu->addChild(createMenuLabel("Actions"));
         MenuItemLoadScalaFile *loadScalaFileItem = new MenuItemLoadScalaFile();
-        loadScalaFileItem->text = "Load Scala File";
+        loadScalaFileItem->text = "Load scala file";
         loadScalaFileItem->xenQntModule = module;
         menu->addChild(loadScalaFileItem);
+        MenuItemDisableAllNotes *disableAllNotesItem = new MenuItemDisableAllNotes();
+        disableAllNotesItem->text = "Disable all notes";
+        disableAllNotesItem->xenQntModule = module;
+        menu->addChild(disableAllNotesItem);
 
     }
 
