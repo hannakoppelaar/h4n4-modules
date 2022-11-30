@@ -449,6 +449,8 @@ struct XenQnt : Module {
         json_t *jsonTuningName = json_object_get(root, "tuningName");
         if (jsonTuningName) {
             setTuningName(json_string_value(jsonTuningName));
+        } else {
+            setTuningName("Unknown");
         }
         if (jsonScalaDir) {
             setScalaDir(json_string_value(jsonScalaDir));
