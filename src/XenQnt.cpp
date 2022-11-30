@@ -83,6 +83,9 @@ struct XenQnt : Module {
     // last-seen dir with scala files
     std::string scalaDir;
 
+    // the name of the tuning shown in the menu
+    std::string tuningName = "12-EDO";
+
     // triggers to pick up button pushes
     dsp::BooleanTrigger stepTriggers[_MATRIX_SIZE];
 
@@ -246,6 +249,10 @@ struct XenQnt : Module {
         this->scalaDir = scalaDir;
     }
 
+    void setTuningName(std::string tuningName) {
+        this->tuningName = tuningName;
+    }
+
     inline TuningStep* getEnabledPitch(double v) {
         return getPitch(enabledPitches, v);
     }
@@ -282,6 +289,11 @@ struct XenQnt : Module {
     }
 
     void updateTuning(char *scalaFile) {
+
+        // update the tuning name (i.e. the basename of the scala file)
+        std::string scalaFileStr = scalaFile;
+        tuningName = scalaFileStr.substr(scalaFileStr.find_last_of("/\\") + 1);
+
         vector<ScaleStep> scaleSteps;
         // compare function for sort
         auto comp = [](const ScaleStep & stepLeft, const ScaleStep & stepRight) {
@@ -409,6 +421,7 @@ struct XenQnt : Module {
         json_t *root = json_object();
         json_t *jsonScale = json_array();
         json_t *jsonScalaDir = json_string(scalaDir.c_str());
+        json_t *jsonTuningName = json_string(tuningName.c_str());
         for (auto v = scale.begin(); v != scale.end(); v++) {
             json_t *step = json_object();
             json_t *cents = json_real(v->cents);
@@ -417,6 +430,7 @@ struct XenQnt : Module {
             json_object_set_new(step, "enabled", enabled);
             json_array_append_new(jsonScale, step);
         }
+        json_object_set_new(root, "tuningName", jsonTuningName);
         json_object_set_new(root, "scalaDir", jsonScalaDir);
         json_object_set_new(root, "scale", jsonScale);
         return root;
@@ -425,6 +439,10 @@ struct XenQnt : Module {
     void dataFromJson(json_t *root) override {
         json_t *jsonScale = json_object_get(root, "scale");
         json_t *jsonScalaDir = json_object_get(root, "scalaDir");
+        json_t *jsonTuningName = json_object_get(root, "tuningName");
+        if (jsonTuningName) {
+            setTuningName(json_string_value(jsonTuningName));
+        }
         if (jsonScalaDir) {
             setScalaDir(json_string_value(jsonScalaDir));
         }
@@ -442,6 +460,7 @@ struct XenQnt : Module {
     }
 
 };
+
 
 
 struct MenuItemLoadScalaFile : MenuItem {
@@ -549,11 +568,25 @@ struct XenQntWidget : ModuleWidget {
     }
 
     void appendContextMenu(Menu *menu) override {
+
+        XenQnt *module = dynamic_cast<XenQnt *>(this->getModule());
+        assert(module);
+
         menu->addChild(new MenuEntry);
-        MenuItemLoadScalaFile *item = new MenuItemLoadScalaFile();
-        item->text = "Load Scala File";
-        item->xenQntModule = dynamic_cast<XenQnt *>(this->getModule());
-        menu->addChild(item);
+
+        menu->addChild(createMenuLabel("Current tuning"));
+        MenuItem *activeTuningItem = new MenuItem();
+        activeTuningItem->text = module->tuningName;
+        menu->addChild(activeTuningItem);
+
+        menu->addChild(new MenuEntry);
+
+        menu->addChild(createMenuLabel("Actions"));
+        MenuItemLoadScalaFile *loadScalaFileItem = new MenuItemLoadScalaFile();
+        loadScalaFileItem->text = "Load Scala File";
+        loadScalaFileItem->xenQntModule = module;
+        menu->addChild(loadScalaFileItem);
+
     }
 
 };
