@@ -24,8 +24,8 @@
 using namespace std;
 using namespace Tunings;
 
-#define _MATRIX_SIZE 36
-
+#define MATRIX_SIZE 36
+#define TWELVE_EDO "12-EDO"
 
 /*
  * Represents a value in the scala file
@@ -48,7 +48,7 @@ struct XenQnt : Module {
     const int FRAME_RATE = 60;
 
     enum ParamId {
-        ENUMS(STEP_PARAMS, _MATRIX_SIZE),
+        ENUMS(STEP_PARAMS, MATRIX_SIZE),
         PARAMS_LEN
     };
     enum InputId {
@@ -61,7 +61,7 @@ struct XenQnt : Module {
         OUTPUTS_LEN
     };
     enum LightId {
-        ENUMS(STEP_LIGHTS, _MATRIX_SIZE * 2), // a red and an orange light per step
+        ENUMS(STEP_LIGHTS, MATRIX_SIZE * 2), // a red and an orange light per step
         LIGHTS_LEN
     };
 
@@ -84,10 +84,10 @@ struct XenQnt : Module {
     std::string scalaDir;
 
     // the name of the tuning shown in the menu
-    std::string tuningName = "12-EDO";
+    std::string tuningName = TWELVE_EDO;
 
     // triggers to pick up button pushes
-    dsp::BooleanTrigger stepTriggers[_MATRIX_SIZE];
+    dsp::BooleanTrigger stepTriggers[MATRIX_SIZE];
 
     // input one sample ago
     vector<float> prevInputVolts;
@@ -111,7 +111,7 @@ struct XenQnt : Module {
         configBypass(PITCH_INPUT, PITCH_OUTPUT);
 
         // Config the LEDs
-        for (int i = 0; i < _MATRIX_SIZE; i++) {
+        for (int i = 0; i < MATRIX_SIZE; i++) {
             configButton(STEP_PARAMS + i);
         }
 
@@ -182,7 +182,7 @@ struct XenQnt : Module {
             } else {
                 for (auto step = scale.begin(); step != scale.end(); step++) {
                     int index = scaleToLightIdx(distance(scale.begin(), step));
-                    if (index < _MATRIX_SIZE) {
+                    if (index < MATRIX_SIZE) {
                         if (step->enabled) {
                             setRedLight(index, 0.9);
                         } else {
@@ -228,6 +228,12 @@ struct XenQnt : Module {
     inline void disableAllSteps() {
         for (auto s = scale.begin(); s != scale.end(); s++) {
             s->enabled = false;
+        }
+    }
+
+    void toggleAllSteps() {
+        for (auto s = scale.begin(); s != scale.end(); s++) {
+            s->enabled = s->enabled ^ true;
         }
     }
 
@@ -383,19 +389,20 @@ struct XenQnt : Module {
 
     // dim red lights beyond the offset
     inline void dimRedLightsFurtherDown(int offset) {
-        for (int i = offset; i < _MATRIX_SIZE; i++) {
+        for (int i = offset; i < MATRIX_SIZE; i++) {
             setRedLight(i, 0.f);
         }
     }
 
     inline void dimOrangeLights() {
-        for (int i = 0; i < _MATRIX_SIZE; i++) {
+        for (int i = 0; i < MATRIX_SIZE; i++) {
             setOrangeLight(i, 0.f);
         }
     }
 
     // set 12 equal as initial tuning
     void onReset() override {
+        tuningName = TWELVE_EDO;
         scale.clear();
         for (int i = 1; i <= 12; i++) {
             scale.push_back({ i * 100.f, true });
@@ -469,6 +476,12 @@ struct MenuItemDisableAllNotes : MenuItem {
     }
 };
 
+struct MenuItemToggleAllNotes : MenuItem {
+    XenQnt *xenQntModule;
+    void onAction(const event::Action &e) override {
+        xenQntModule->toggleAllSteps();
+    }
+};
 
 struct MenuItemLoadScalaFile : MenuItem {
     XenQnt *xenQntModule;
@@ -561,7 +574,7 @@ struct XenQntWidget : ModuleWidget {
         float verticalOffset = 40.f;
         float distance = (20.32 - 2 * margin) / (numCols - 1);
         int row, column;
-        for (int i = 0; i < _MATRIX_SIZE; i++) {
+        for (int i = 0; i < MATRIX_SIZE; i++) {
             row = i / numCols + 1;
             column = i % numCols;
             addParam(createParamCentered<MatrixButton> (mm2px(Vec(margin + column * distance,
@@ -581,14 +594,8 @@ struct XenQntWidget : ModuleWidget {
 
         menu->addChild(new MenuEntry);
 
-        menu->addChild(createMenuLabel("Current tuning"));
-        MenuItem *activeTuningItem = new MenuItem();
-        activeTuningItem->text = module->tuningName;
-        menu->addChild(activeTuningItem);
+        menu->addChild(createMenuLabel("Tuning: " + module->tuningName));
 
-        menu->addChild(new MenuEntry);
-
-        menu->addChild(createMenuLabel("Actions"));
         MenuItemLoadScalaFile *loadScalaFileItem = new MenuItemLoadScalaFile();
         loadScalaFileItem->text = "Load scala file";
         loadScalaFileItem->xenQntModule = module;
@@ -597,6 +604,10 @@ struct XenQntWidget : ModuleWidget {
         disableAllNotesItem->text = "Disable all notes";
         disableAllNotesItem->xenQntModule = module;
         menu->addChild(disableAllNotesItem);
+        MenuItemToggleAllNotes *toggleAllNotesItem = new MenuItemToggleAllNotes();
+        toggleAllNotesItem->text = "Invert selection";
+        toggleAllNotesItem->xenQntModule = module;
+        menu->addChild(toggleAllNotesItem);
 
     }
 
