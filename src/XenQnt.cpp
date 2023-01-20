@@ -96,6 +96,8 @@ struct XenQnt : Module {
 
     bool cvConnected = false;
 
+    bool midiNoteMap = false;
+
     float lightUpdateTimer = 0.f;
     float cvScanTimer = 0.f;
 
@@ -298,6 +300,7 @@ struct XenQnt : Module {
 
         // update the tuning name (i.e. the basename of the scala file)
         std::string scalaFileStr = scalaFile;
+        std::string oldTuningName = tuningName;
         tuningName = scalaFileStr.substr(scalaFileStr.find_last_of("/\\") + 1);
 
         vector<ScaleStep> scaleSteps;
@@ -315,6 +318,7 @@ struct XenQnt : Module {
             // sort the scale, because the Scala spec allows for unsorted scale steps
             sort(scaleSteps.begin(), scaleSteps.end(), comp);
         } catch (const TuningError &e) {
+            tuningName = oldTuningName;
             error = true;
             return;
         }
