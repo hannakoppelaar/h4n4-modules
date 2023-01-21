@@ -77,6 +77,9 @@ struct XenQnt : Module {
     // the tuning in cents
     vector<ScaleStep> scale;
 
+    // any changes to the scale go via this member, which is swapped in inside process() to avoid concurrency issues
+    vector<ScaleStep> newScale;
+
     // backup tuning so we dont lose it when we connect cv
     vector<ScaleStep> backupScale;
 
@@ -94,9 +97,13 @@ struct XenQnt : Module {
 
     bool userPushed = false;
 
+    bool stepsToggledFromMenu = false;
+
     bool cvConnected = false;
 
-    bool midiNoteMap = false;
+    bool map12Edo = false;
+
+    bool tuningChangeRequested = false;
 
     float lightUpdateTimer = 0.f;
     float cvScanTimer = 0.f;
@@ -131,6 +138,19 @@ struct XenQnt : Module {
             cvScanTimer = 0.f;
         }
 
+        // Has the user changed the scale?
+        if (!newScale.empty()) {
+            scale.assign(newScale.begin(), newScale.end());
+            newScale.clear();
+            updateTuning();
+        }
+
+        // Has there been a change that requires us te recompute the vectors of allowable pitches?
+        if (tuningChangeRequested) {
+            updateTuning();
+            tuningChangeRequested = false;
+        }
+
         // Process CV inputs and update the tuning accordingly (scan once per ms)
         if (inputs[CV_INPUT].isConnected()) {
             if (cvScanTimer == 0) {
@@ -146,7 +166,7 @@ struct XenQnt : Module {
                     inputVolts.push_back(inputs[CV_INPUT].getVoltage(i));
                 }
                 if (inputVolts != prevInputVolts) {
-                    disableAllSteps();
+                    setEnabledStatusAllSteps(false);
                     for (auto v = inputVolts.begin(); v != inputVolts.end(); v++) {
                         TuningStep *step = getPitch(*v);
                         scale.at(step->scaleIndex).enabled = true;
@@ -205,7 +225,7 @@ struct XenQnt : Module {
             }
         }
 
-        // Process the pitch inputs and set the outputs and the the orange lights
+        // Process the pitch inputs and set the outputs and the orange lights
         int numChannels = inputs[PITCH_INPUT].getChannels();
         if (outputs[PITCH_OUTPUT].isConnected()) {
             if (lightUpdateTimer == 0 and !error) {
@@ -213,7 +233,7 @@ struct XenQnt : Module {
             }
             for (int i = 0; i < numChannels; i++) {
                 TuningStep *step = getEnabledPitch(inputs[PITCH_INPUT].getVoltage(i));
-                if (!step) {
+                if (step == NULL) {
                     // Normally this means there were no enabled steps: set output voltage to zero
                     outputs[PITCH_OUTPUT].setVoltage(0.f, i);
                 } else {
@@ -227,16 +247,15 @@ struct XenQnt : Module {
         }
     }
 
-    inline void disableAllSteps() {
+
+    void setEnabledStatusAllSteps(bool enabled) {
         for (auto s = scale.begin(); s != scale.end(); s++) {
-            s->enabled = false;
+            s->enabled = enabled;
         }
     }
 
-    void toggleAllSteps() {
-        for (auto s = scale.begin(); s != scale.end(); s++) {
-            s->enabled = s->enabled ^ true;
-        }
+    void toggleMap12Edo() {
+        map12Edo = map12Edo ^ true;
     }
 
     // This weird indexing is necessary because the last value in
@@ -262,17 +281,25 @@ struct XenQnt : Module {
     }
 
     inline TuningStep* getEnabledPitch(double v) {
-        return getPitch(enabledPitches, v);
+        return getPitch(v, true);
     }
 
     inline TuningStep* getPitch(double v) {
-        return getPitch(pitches, v);
+        return getPitch(v,false);
     }
 
-    // get the nearest allowable pitch
-    inline TuningStep* getPitch(vector<TuningStep> &pitches, double v) {
+    inline TuningStep* getPitch(double v, bool enabled) {
+        if (map12Edo) {
+            return getPitchByMapping(v, enabled);
+        } else {
+            return getPitchByProximity(v, enabled);
+        }
+    }
 
-        if (pitches.size() == 0) {
+    // Map consecutive 12-EDO pitches to consecutive pitches in the target tuning, with 0 V <-> 0 V
+    inline TuningStep* getPitchByMapping(double v, bool enabled) {
+
+        if (pitches.empty()) {
             return NULL;
         }
 
@@ -281,10 +308,48 @@ struct XenQnt : Module {
             return step.voltage < voltage;
         };
 
-        auto ceil = lower_bound(pitches.begin(), pitches.end(), v, comp);
-        if (ceil == pitches.begin()) {
+        auto low = lower_bound(pitches.begin(), pitches.end(), 0.0, comp);
+        int zeroVoltIndex = low - pitches.begin();
+        int pitchIndex = zeroVoltIndex + round(v*12);
+
+        if (pitchIndex < 0) {
+            return &pitches.at(0);
+        }
+
+        if (pitchIndex > pitches.size()) {
+            return &pitches.back();
+        }
+
+        TuningStep &step = pitches.at(pitchIndex);
+
+        if (enabled) {
+            return getPitchByProximity(step.voltage, enabled);
+        } else {
+            return &step;
+        }
+    }
+
+    // get the nearest allowable pitch
+    inline TuningStep* getPitchByProximity(double v, bool enabled) {
+
+        vector<TuningStep> _pitches = pitches;
+        if (enabled) {
+            _pitches = enabledPitches;
+        }
+
+        if (_pitches.empty()) {
+            return NULL;
+        }
+
+        // compare function for lower_bound
+        auto comp = [](const TuningStep & step, double voltage) {
+            return step.voltage < voltage;
+        };
+
+        auto ceil = lower_bound(_pitches.begin(), _pitches.end(), v, comp);
+        if (ceil == _pitches.begin()) {
             return &*ceil;
-        } else if (ceil == pitches.end()) {
+        } else if (ceil == _pitches.end()) {
             return &*(ceil - 1);
         } else {
             auto floor = ceil - 1;
@@ -296,14 +361,16 @@ struct XenQnt : Module {
         }
     }
 
-    void updateTuning(char *scalaFile) {
+
+    void updateScale(char *scalaFile) {
+
+        newScale.clear();
 
         // update the tuning name (i.e. the basename of the scala file)
         std::string scalaFileStr = scalaFile;
         std::string oldTuningName = tuningName;
         tuningName = scalaFileStr.substr(scalaFileStr.find_last_of("/\\") + 1);
 
-        vector<ScaleStep> scaleSteps;
         // compare function for sort
         auto comp = [](const ScaleStep & stepLeft, const ScaleStep & stepRight) {
             return stepLeft.cents < stepRight.cents;
@@ -313,36 +380,32 @@ struct XenQnt : Module {
             vector<Tone> tones = tuning.scale.tones;
             // first put all cent values in a list
             for (auto tone = tones.begin(); tone != tones.end(); tone++) {
-                scaleSteps.push_back({(*tone).cents, true});
+                newScale.push_back({(*tone).cents, true});
             }
             // sort the scale, because the Scala spec allows for unsorted scale steps
-            sort(scaleSteps.begin(), scaleSteps.end(), comp);
+            sort(newScale.begin(), newScale.end(), comp);
         } catch (const TuningError &e) {
             tuningName = oldTuningName;
             error = true;
             return;
         }
-        updateTuning(scaleSteps);
     }
 
+
+    // Derive the vector of all allowed pitches from the current scale
     void updateTuning() {
-        updateTuning(scale);
-    }
-
-
-    void updateTuning(vector<ScaleStep> scaleSteps) {
 
         // Compute positive voltages
         list<TuningStep> enabledVoltages;
         list<TuningStep> voltages;
         double voltage = 0.f;
-        double period = scaleSteps.back().cents;
+        double period = scale.back().cents;
         // the offset to indicate in which period (e.g. octave for octave-repeating tunings) we are
         double periodOffset = 0.f;
         bool done = false;
         while (!done) {
-            for (auto step = scaleSteps.begin(); step != scaleSteps.end(); step++) {
-                int index = distance(scaleSteps.begin(), step);
+            for (auto step = scale.begin(); step != scale.end(); step++) {
+                int index = distance(scale.begin(), step);
                 voltage = periodOffset + step->cents / 1200;
                 if (voltage <= MAX_VOLT) {
                     if (step->enabled) {
@@ -362,8 +425,8 @@ struct XenQnt : Module {
         periodOffset = 0.f;
         done = false;
         while (!done) {
-            for (auto step = scaleSteps.rbegin(); step != scaleSteps.rend(); step++) {
-                int index = distance(step, scaleSteps.rend()) - 1;
+            for (auto step = scale.rbegin(); step != scale.rend(); step++) {
+                int index = distance(step, scale.rend()) - 1;
                 voltage = periodOffset + (step->cents - period) / 1200;
                 if (voltage >= MIN_VOLT) {
                     if (step->enabled) {
@@ -387,9 +450,7 @@ struct XenQnt : Module {
         for (auto v = enabledVoltages.begin(); v != enabledVoltages.end(); v++) {
             enabledPitches.push_back(*v);
         }
-        scale = scaleSteps;
     }
-
 
     // dim red lights beyond the offset
     inline void dimRedLightsFurtherDown(int offset) {
@@ -407,11 +468,9 @@ struct XenQnt : Module {
     // set 12 equal as initial tuning
     void onReset() override {
         tuningName = TWELVE_EDO;
-        scale.clear();
         for (int i = 1; i <= 12; i++) {
-            scale.push_back({ i * 100.f, true });
+            newScale.push_back({ i * 100.f, true });
         }
-        updateTuning();
     }
 
     // enable random notes in the selected tuning
@@ -424,7 +483,7 @@ struct XenQnt : Module {
                 step->enabled = false;
             }
         }
-        updateTuning();
+        tuningChangeRequested = true;
     }
 
     // VCV (de-)serialization callbacks
@@ -433,6 +492,7 @@ struct XenQnt : Module {
         json_t *jsonScale = json_array();
         json_t *jsonScalaDir = json_string(scalaDir.c_str());
         json_t *jsonTuningName = json_string(tuningName.c_str());
+        json_t *jsonMap12Edo = json_boolean(map12Edo);
         for (auto v = scale.begin(); v != scale.end(); v++) {
             json_t *step = json_object();
             json_t *cents = json_real(v->cents);
@@ -441,6 +501,7 @@ struct XenQnt : Module {
             json_object_set_new(step, "enabled", enabled);
             json_array_append_new(jsonScale, step);
         }
+        json_object_set_new(root, "map12Edo", jsonMap12Edo);
         json_object_set_new(root, "tuningName", jsonTuningName);
         json_object_set_new(root, "scalaDir", jsonScalaDir);
         json_object_set_new(root, "scale", jsonScale);
@@ -451,6 +512,12 @@ struct XenQnt : Module {
         json_t *jsonScale = json_object_get(root, "scale");
         json_t *jsonScalaDir = json_object_get(root, "scalaDir");
         json_t *jsonTuningName = json_object_get(root, "tuningName");
+        json_t *jsonMap12Edo = json_object_get(root, "map12Edo");
+        if (jsonMap12Edo) {
+            map12Edo = json_boolean_value(jsonMap12Edo);
+        } else {
+            map12Edo = false;
+        }
         if (jsonTuningName) {
             setTuningName(json_string_value(jsonTuningName));
         } else {
@@ -460,15 +527,14 @@ struct XenQnt : Module {
             setScalaDir(json_string_value(jsonScalaDir));
         }
         if (jsonScale) {
-            scale.clear();
+            newScale.clear();
             size_t i;
             json_t *val;
             json_array_foreach(jsonScale, i, val) {
                 json_t *cents = json_object_get(val, "cents");
                 json_t *enabled = json_object_get(val, "enabled");
-                scale.push_back(ScaleStep{json_real_value(cents), json_boolean_value(enabled) });
+                newScale.push_back(ScaleStep{json_real_value(cents), json_boolean_value(enabled) });
             }
-            updateTuning();
         }
     }
 
@@ -478,14 +544,23 @@ struct XenQnt : Module {
 struct MenuItemDisableAllNotes : MenuItem {
     XenQnt *xenQntModule;
     void onAction(const event::Action &e) override {
-        xenQntModule->disableAllSteps();
+        xenQntModule->setEnabledStatusAllSteps(false);
+        xenQntModule->tuningChangeRequested = true;
     }
 };
 
-struct MenuItemToggleAllNotes : MenuItem {
+struct MenuItemEnableAllNotes : MenuItem {
     XenQnt *xenQntModule;
     void onAction(const event::Action &e) override {
-        xenQntModule->toggleAllSteps();
+        xenQntModule->setEnabledStatusAllSteps(true);
+        xenQntModule->tuningChangeRequested = true;
+    }
+};
+
+struct MenuItemToggleMap12Edo : MenuItem {
+    XenQnt *xenQntModule;
+    void onAction(const event::Action &e) override {
+        xenQntModule->toggleMap12Edo();
     }
 };
 
@@ -530,7 +605,7 @@ struct MenuItemLoadScalaFile : MenuItem {
     static void pathSelected(XenQnt *xenQntModule, char* path) {
         if (path) {
             xenQntModule->setScalaDir(getParent(path));
-            xenQntModule->updateTuning(path);
+            xenQntModule->updateScale(path);
             if (xenQntModule->cvConnected) {
                 xenQntModule->backupScale = xenQntModule->scale;
             }
@@ -610,10 +685,14 @@ struct XenQntWidget : ModuleWidget {
         disableAllNotesItem->text = "Disable all notes";
         disableAllNotesItem->xenQntModule = module;
         menu->addChild(disableAllNotesItem);
-        MenuItemToggleAllNotes *toggleAllNotesItem = new MenuItemToggleAllNotes();
-        toggleAllNotesItem->text = "Invert selection";
-        toggleAllNotesItem->xenQntModule = module;
-        menu->addChild(toggleAllNotesItem);
+        MenuItemEnableAllNotes *enablaAllNotesItem = new MenuItemEnableAllNotes();
+        enablaAllNotesItem->text = "Enable all notes";
+        enablaAllNotesItem->xenQntModule = module;
+        menu->addChild(enablaAllNotesItem);
+        MenuItemToggleMap12Edo *toggleMap12EdoItem = createMenuItem<MenuItemToggleMap12Edo>("Map 12 EDO",
+                                                                            CHECKMARK(module->map12Edo));
+        toggleMap12EdoItem->xenQntModule = module;
+        menu->addChild(toggleMap12EdoItem);
 
     }
 
