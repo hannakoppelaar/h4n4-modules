@@ -71,6 +71,9 @@ struct XenQnt : Module {
     // the vector of all allowed pitches/voltages in the tuning
     vector<TuningStep> pitches;
 
+    // used by the Map 12 EDO feature
+    int numNegativeVoltages;
+
     // the vector of all enabled pitches/voltages
     vector<TuningStep> enabledPitches;
 
@@ -303,14 +306,7 @@ struct XenQnt : Module {
             return NULL;
         }
 
-        // compare function for lower_bound
-        auto comp = [](const TuningStep & step, double voltage) {
-            return step.voltage < voltage;
-        };
-
-        auto low = lower_bound(pitches.begin(), pitches.end(), 0.0, comp);
-        int zeroVoltIndex = low - pitches.begin();
-        int pitchIndex = zeroVoltIndex + round(v*12);
+        int pitchIndex = numNegativeVoltages + round(v*12);
 
         if (pitchIndex < 0) {
             return &pitches.at(0);
@@ -424,6 +420,7 @@ struct XenQnt : Module {
         voltage = 0.f;
         periodOffset = 0.f;
         done = false;
+        int numNonPositiveVoltages = 0;
         while (!done) {
             for (auto step = scale.rbegin(); step != scale.rend(); step++) {
                 int index = distance(step, scale.rend()) - 1;
@@ -433,6 +430,7 @@ struct XenQnt : Module {
                         enabledVoltages.push_front({voltage, index});
                     }
                     voltages.push_front({voltage, index});
+                    numNonPositiveVoltages++;
                 } else {
                     done = true;
                     break;
@@ -441,7 +439,9 @@ struct XenQnt : Module {
             periodOffset -= period / 1200;
         }
 
+
         // Finally update the tuning
+        numNegativeVoltages = numNonPositiveVoltages - 1;
         pitches.clear();
         for (auto v = voltages.begin(); v != voltages.end(); v++) {
             pitches.push_back(*v);
@@ -468,6 +468,7 @@ struct XenQnt : Module {
     // set 12 equal as initial tuning
     void onReset() override {
         tuningName = TWELVE_EDO;
+        newScale.clear();
         for (int i = 1; i <= 12; i++) {
             newScale.push_back({ i * 100.f, true });
         }
