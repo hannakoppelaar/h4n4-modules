@@ -1,7 +1,7 @@
 # CHANGELOG
 
 ## 2.2.0 (2023-01-21)
-- Added "Map 12 EDO" option to the context menu
+- Added proportional and 12-EDO mapping algorithms
 - Added menu options to enable/disable all notes
 - Added name of the active scala file to the menu
 - Fixed concurrency issues
