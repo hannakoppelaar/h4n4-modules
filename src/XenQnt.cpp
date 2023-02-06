@@ -43,6 +43,10 @@ struct TuningStep {
     int scaleIndex; // points to corresponding value in the scala file
 };
 
+
+enum MappingMode { proximity, proportional, twelveEdoInput };
+
+
 struct XenQnt : Module {
 
     const int FRAME_RATE = 60;
@@ -71,8 +75,10 @@ struct XenQnt : Module {
     // the vector of all allowed pitches/voltages in the tuning
     vector<TuningStep> pitches;
 
-    // used by the Map 12 EDO feature
+    // used by the 12-EDO and proportional mapping algorithms
     int numNegativeVoltages;
+    int numEnabledNegativeVoltages;
+    int numEnabledSteps;
 
     // the vector of all enabled pitches/voltages
     vector<TuningStep> enabledPitches;
@@ -98,13 +104,16 @@ struct XenQnt : Module {
     // input one sample ago
     vector<float> prevInputVolts;
 
+    MappingMode cvMappingMode = proximity;
+    MappingMode inputMappingMode = proximity;
+
     bool userPushed = false;
 
     bool stepsToggledFromMenu = false;
 
     bool cvConnected = false;
 
-    bool map12Edo = false;
+    bool mapInputFrom12Edo = false;
 
     bool tuningChangeRequested = false;
 
@@ -171,7 +180,7 @@ struct XenQnt : Module {
                 if (inputVolts != prevInputVolts) {
                     setEnabledStatusAllSteps(false);
                     for (auto v = inputVolts.begin(); v != inputVolts.end(); v++) {
-                        TuningStep *step = getPitch(*v);
+                        TuningStep *step = getCvPitch(*v);
                         scale.at(step->scaleIndex).enabled = true;
                     }
                     updateTuning();
@@ -257,9 +266,6 @@ struct XenQnt : Module {
         }
     }
 
-    void toggleMap12Edo() {
-        map12Edo = map12Edo ^ true;
-    }
 
     // This weird indexing is necessary because the last value in
     // the scala file corresponds with the first note of the tuning
@@ -284,35 +290,71 @@ struct XenQnt : Module {
     }
 
     inline TuningStep* getEnabledPitch(double v) {
-        return getPitch(v, true);
-    }
-
-    inline TuningStep* getPitch(double v) {
-        return getPitch(v,false);
-    }
-
-    inline TuningStep* getPitch(double v, bool enabled) {
-        if (map12Edo) {
-            return getPitchByMapping(v, enabled);
-        } else {
-            return getPitchByProximity(v, enabled);
+        switch (inputMappingMode) {
+        case proportional:
+            return getPitchProportional(v, true);
+        case proximity:
+            return getPitchByProximity(v, true);
+        case twelveEdoInput:
+            return getPitchFrom12Edo(v, true);
         }
     }
 
+    inline TuningStep* getCvPitch(double v) {
+        switch (cvMappingMode) {
+        case proportional:
+            return getPitchProportional(v, false);
+        case proximity:
+            return getPitchByProximity(v, false);
+        case twelveEdoInput:
+            return getPitchFrom12Edo(v, false);
+        }
+    }
+
+    // Proportional mapping: all pitches in the tuning have an inverse image of the same size
+    inline TuningStep* getPitchProportional(double v, bool enabled) {
+
+        int pitchIndex;
+        double period = scale.back().cents / 1200;
+        vector<TuningStep> _pitches;
+
+        if (enabled) {
+            _pitches = enabledPitches;
+            pitchIndex = numEnabledNegativeVoltages + round(v / period * numEnabledSteps);
+        } else {
+            _pitches = pitches;
+            pitchIndex = numNegativeVoltages + round(v / period * scale.size());
+        }
+
+        if (_pitches.empty()) {
+            return NULL;
+        }
+
+        if (pitchIndex < 0) {
+            return &_pitches.at(0);
+        }
+
+        if (pitchIndex >= _pitches.size()) {
+            return &_pitches.back();
+        }
+
+        return &_pitches.at(pitchIndex);
+    }
+
     // Map consecutive 12-EDO pitches to consecutive pitches in the target tuning, with 0 V <-> 0 V
-    inline TuningStep* getPitchByMapping(double v, bool enabled) {
+    inline TuningStep* getPitchFrom12Edo(double v, bool enabled) {
 
         if (pitches.empty()) {
             return NULL;
         }
 
-        int pitchIndex = numNegativeVoltages + round(v*12);
+        int pitchIndex = numNegativeVoltages + round(v * 12);
 
         if (pitchIndex < 0) {
             return &pitches.at(0);
         }
 
-        if (pitchIndex > pitches.size()) {
+        if (pitchIndex >= pitches.size()) {
             return &pitches.back();
         }
 
@@ -421,6 +463,7 @@ struct XenQnt : Module {
         periodOffset = 0.f;
         done = false;
         int numNonPositiveVoltages = 0;
+        int numEnabledNegativeVoltages = 0;
         while (!done) {
             for (auto step = scale.rbegin(); step != scale.rend(); step++) {
                 int index = distance(step, scale.rend()) - 1;
@@ -428,6 +471,9 @@ struct XenQnt : Module {
                 if (voltage >= MIN_VOLT) {
                     if (step->enabled) {
                         enabledVoltages.push_front({voltage, index});
+                        if (voltage < 0) {
+                            numEnabledNegativeVoltages++;
+                        }
                     }
                     voltages.push_front({voltage, index});
                     numNonPositiveVoltages++;
@@ -439,9 +485,9 @@ struct XenQnt : Module {
             periodOffset -= period / 1200;
         }
 
-
         // Finally update the tuning
         numNegativeVoltages = numNonPositiveVoltages - 1;
+        this->numEnabledNegativeVoltages = numEnabledNegativeVoltages;
         pitches.clear();
         for (auto v = voltages.begin(); v != voltages.end(); v++) {
             pitches.push_back(*v);
@@ -449,6 +495,12 @@ struct XenQnt : Module {
         enabledPitches.clear();
         for (auto v = enabledVoltages.begin(); v != enabledVoltages.end(); v++) {
             enabledPitches.push_back(*v);
+        }
+        numEnabledSteps = 0;
+        for (auto step = scale.begin(); step != scale.end(); step++) {
+            if (step->enabled) {
+                numEnabledSteps++;
+            }
         }
     }
 
@@ -493,7 +545,8 @@ struct XenQnt : Module {
         json_t *jsonScale = json_array();
         json_t *jsonScalaDir = json_string(scalaDir.c_str());
         json_t *jsonTuningName = json_string(tuningName.c_str());
-        json_t *jsonMap12Edo = json_boolean(map12Edo);
+        json_t *jsonInputMappingMode = json_integer(inputMappingMode);
+        json_t *jsonCvMappingMode = json_integer(cvMappingMode);
         for (auto v = scale.begin(); v != scale.end(); v++) {
             json_t *step = json_object();
             json_t *cents = json_real(v->cents);
@@ -502,7 +555,8 @@ struct XenQnt : Module {
             json_object_set_new(step, "enabled", enabled);
             json_array_append_new(jsonScale, step);
         }
-        json_object_set_new(root, "map12Edo", jsonMap12Edo);
+        json_object_set_new(root, "inputMappingMode", jsonInputMappingMode);
+        json_object_set_new(root, "cvMappingMode", jsonCvMappingMode);
         json_object_set_new(root, "tuningName", jsonTuningName);
         json_object_set_new(root, "scalaDir", jsonScalaDir);
         json_object_set_new(root, "scale", jsonScale);
@@ -513,11 +567,17 @@ struct XenQnt : Module {
         json_t *jsonScale = json_object_get(root, "scale");
         json_t *jsonScalaDir = json_object_get(root, "scalaDir");
         json_t *jsonTuningName = json_object_get(root, "tuningName");
-        json_t *jsonMap12Edo = json_object_get(root, "map12Edo");
-        if (jsonMap12Edo) {
-            map12Edo = json_boolean_value(jsonMap12Edo);
+        json_t *jsonInputMappingMode = json_object_get(root, "inputMappingMode");
+        json_t *jsonCvMappingMode = json_object_get(root, "cvMappingMode");
+        if (jsonInputMappingMode) {
+            inputMappingMode = static_cast<MappingMode>(json_integer_value(jsonInputMappingMode));
         } else {
-            map12Edo = false;
+            inputMappingMode = proximity;
+        }
+        if (jsonCvMappingMode) {
+            cvMappingMode = static_cast<MappingMode>(json_integer_value(jsonCvMappingMode));
+        } else {
+            cvMappingMode = proximity;
         }
         if (jsonTuningName) {
             setTuningName(json_string_value(jsonTuningName));
@@ -555,13 +615,6 @@ struct MenuItemEnableAllNotes : MenuItem {
     void onAction(const event::Action &e) override {
         xenQntModule->setEnabledStatusAllSteps(true);
         xenQntModule->tuningChangeRequested = true;
-    }
-};
-
-struct MenuItemToggleMap12Edo : MenuItem {
-    XenQnt *xenQntModule;
-    void onAction(const event::Action &e) override {
-        xenQntModule->toggleMap12Edo();
     }
 };
 
@@ -690,10 +743,33 @@ struct XenQntWidget : ModuleWidget {
         enablaAllNotesItem->text = "Enable all notes";
         enablaAllNotesItem->xenQntModule = module;
         menu->addChild(enablaAllNotesItem);
-        MenuItemToggleMap12Edo *toggleMap12EdoItem = createMenuItem<MenuItemToggleMap12Edo>("Map 12 EDO",
-                                                                            CHECKMARK(module->map12Edo));
-        toggleMap12EdoItem->xenQntModule = module;
-        menu->addChild(toggleMap12EdoItem);
+
+        menu->addChild(createSubmenuItem("Mapping mode main", "", [ = ](ui::Menu * menu) {
+            menu->addChild(createMenuItem("Proximity", CHECKMARK(module->inputMappingMode == proximity), [ = ]() {
+                module->inputMappingMode = proximity;
+            }));
+            menu->addChild(createMenuItem("Proportional", CHECKMARK(module->inputMappingMode == proportional), [ = ]() {
+                module->inputMappingMode = proportional;
+            }));
+            menu->addChild(createMenuItem("12-EDO input", CHECKMARK(module->inputMappingMode == twelveEdoInput), [ = ]() {
+                module->inputMappingMode = twelveEdoInput;
+            }));
+        }));
+
+        menu->addChild(createSubmenuItem("Mapping mode CV", "", [ = ](ui::Menu * menu) {
+            menu->addChild(createMenuItem("Proximity", CHECKMARK(module->cvMappingMode == proximity), [ = ]() {
+                module->cvMappingMode = proximity;
+            }));
+            menu->addChild(createMenuItem("Proportional", CHECKMARK(module->cvMappingMode == proportional), [ = ]() {
+                module->cvMappingMode = proportional;
+            }));
+            menu->addChild(createMenuItem("12-EDO input", CHECKMARK(module->cvMappingMode == twelveEdoInput), [ = ]() {
+                module->cvMappingMode = twelveEdoInput;
+            }));
+        }));
+
+
+
 
     }
 
