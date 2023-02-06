@@ -5,6 +5,7 @@
 - Added menu options to enable/disable all notes
 - Added name of the active scala file to the menu
 - Fixed concurrency issues
+- Added support for Cardinal
 
 ## 2.1.1 (2022-06-01)
 - Fixed crash on scala file load on windows
