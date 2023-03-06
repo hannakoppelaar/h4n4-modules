@@ -113,8 +113,6 @@ struct XenQnt : Module {
 
     bool cvConnected = false;
 
-    bool mapInputFrom12Edo = false;
-
     bool tuningChangeRequested = false;
 
     float lightUpdateTimer = 0.f;

@@ -9,8 +9,8 @@ A polyphonic quantizer module that supports any tuning that can be specified in 
 
 The quantizer has three modes, which can be set separately for the CV and main inputs:
 - Proximity (default): map the incoming voltage to the nearest voltage in the tuning.
-- Proportional: map the input in such a way that the inverse images of the (in the case of the main input: enabled) pitches in the tuning all have the same size.
-- 12-EDO input: map consecutive pitches from 12-EDO to consecutive pitches in the target tuning.
+- Proportional: map the input in such a way that the inverse images of the (enabled) pitches in the tuning all have the same size. This can be useful for creating evenly spaced pitch changes when the input is an LFO. 
+- 12-EDO input: map consecutive pitches from 12-EDO to consecutive pitches in the target tuning. 
 
 In all three mapping modes 0 V is a fixed point (zero always gets mapped to zero).
 
