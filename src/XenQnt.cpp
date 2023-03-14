@@ -178,8 +178,8 @@ struct XenQnt : Module {
                 if (inputVolts != prevInputVolts) {
                     setEnabledStatusAllSteps(false);
                     for (auto v = inputVolts.begin(); v != inputVolts.end(); v++) {
-                        TuningStep *step = getCvPitch(*v);
-                        scale.at(step->scaleIndex).enabled = true;
+                        TuningStep step = getCvPitch(*v);
+                        scale.at(step.scaleIndex).enabled = true;
                     }
                     updateTuning();
                     prevInputVolts = inputVolts;
@@ -242,15 +242,10 @@ struct XenQnt : Module {
                 dimOrangeLights();
             }
             for (int i = 0; i < numChannels; i++) {
-                TuningStep *step = getEnabledPitch(inputs[PITCH_INPUT].getVoltage(i));
-                if (step == NULL) {
-                    // Normally this means there were no enabled steps: set output voltage to zero
-                    outputs[PITCH_OUTPUT].setVoltage(0.f, i);
-                } else {
-                    outputs[PITCH_OUTPUT].setVoltage(step->voltage, i);
-                    if (lightUpdateTimer == 0 and !error) {
-                        setOrangeLight(scaleToLightIdx(step->scaleIndex), 0.7);
-                    }
+                TuningStep step = getEnabledPitch(inputs[PITCH_INPUT].getVoltage(i));
+                outputs[PITCH_OUTPUT].setVoltage(step.voltage, i);
+                if (lightUpdateTimer == 0 and !error) {
+                    setOrangeLight(scaleToLightIdx(step.scaleIndex), 0.7);
                 }
             }
             outputs[PITCH_OUTPUT].setChannels(numChannels);
@@ -287,7 +282,7 @@ struct XenQnt : Module {
         this->tuningName = tuningName;
     }
 
-    inline TuningStep* getEnabledPitch(double v) {
+    inline TuningStep getEnabledPitch(double v) {
         switch (inputMappingMode) {
         case proportional:
             return getPitchProportional(v, true);
@@ -295,10 +290,12 @@ struct XenQnt : Module {
             return getPitchByProximity(v, true);
         case twelveEdoInput:
             return getPitchFrom12Edo(v, true);
+        default:
+            return getPitchByProximity(v, true);
         }
     }
 
-    inline TuningStep* getCvPitch(double v) {
+    inline TuningStep getCvPitch(double v) {
         switch (cvMappingMode) {
         case proportional:
             return getPitchProportional(v, false);
@@ -306,11 +303,13 @@ struct XenQnt : Module {
             return getPitchByProximity(v, false);
         case twelveEdoInput:
             return getPitchFrom12Edo(v, false);
+        default:
+            return getPitchByProximity(v, false);
         }
     }
 
     // Proportional mapping: all pitches in the tuning have an inverse image of the same size
-    inline TuningStep* getPitchProportional(double v, bool enabled) {
+    inline TuningStep getPitchProportional(double v, bool enabled) {
 
         int pitchIndex;
         double period = scale.back().cents / 1200;
@@ -324,36 +323,40 @@ struct XenQnt : Module {
             pitchIndex = numNegativeVoltages + round(v / period * scale.size());
         }
 
+        // return 0 V if there are no (enabled) pitches in the tuning
         if (_pitches.empty()) {
-            return NULL;
+            int rootIdx = scale.size() - 1;
+            return {0.0, rootIdx};
         }
 
         if (pitchIndex < 0) {
-            return &_pitches.at(0);
+            return _pitches.at(0);
         }
 
         if (pitchIndex >= _pitches.size()) {
-            return &_pitches.back();
+            return _pitches.back();
         }
 
-        return &_pitches.at(pitchIndex);
+        return _pitches.at(pitchIndex);
     }
 
     // Map consecutive 12-EDO pitches to consecutive pitches in the target tuning, with 0 V <-> 0 V
-    inline TuningStep* getPitchFrom12Edo(double v, bool enabled) {
+    inline TuningStep getPitchFrom12Edo(double v, bool enabled) {
 
+        // return 0 V if there are no (enabled) pitches in the tuning
         if (pitches.empty()) {
-            return NULL;
+            int rootIdx = scale.size() - 1;
+            return {0.0, rootIdx};
         }
 
         int pitchIndex = numNegativeVoltages + round(v * 12);
 
         if (pitchIndex < 0) {
-            return &pitches.at(0);
+            return pitches.at(0);
         }
 
         if (pitchIndex >= pitches.size()) {
-            return &pitches.back();
+            return pitches.back();
         }
 
         TuningStep &step = pitches.at(pitchIndex);
@@ -361,20 +364,22 @@ struct XenQnt : Module {
         if (enabled) {
             return getPitchByProximity(step.voltage, enabled);
         } else {
-            return &step;
+            return step;
         }
     }
 
     // get the nearest allowable pitch
-    inline TuningStep* getPitchByProximity(double v, bool enabled) {
+    inline TuningStep getPitchByProximity(double v, bool enabled) {
 
         vector<TuningStep> _pitches = pitches;
         if (enabled) {
             _pitches = enabledPitches;
         }
 
+        // return 0 V if there are no (enabled) pitches in the tuning
         if (_pitches.empty()) {
-            return NULL;
+            int rootIdx = scale.size() - 1;
+            return {0.0, rootIdx};
         }
 
         // compare function for lower_bound
@@ -384,15 +389,15 @@ struct XenQnt : Module {
 
         auto ceil = lower_bound(_pitches.begin(), _pitches.end(), v, comp);
         if (ceil == _pitches.begin()) {
-            return &*ceil;
+            return *ceil;
         } else if (ceil == _pitches.end()) {
-            return &*(ceil - 1);
+            return *(ceil - 1);
         } else {
             auto floor = ceil - 1;
             if ((ceil->voltage - v) > (v - floor->voltage)) {
-                return &*floor;
+                return *floor;
             } else {
-                return &*ceil;
+                return *ceil;
             }
         }
     }
