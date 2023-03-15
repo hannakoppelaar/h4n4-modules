@@ -313,31 +313,31 @@ struct XenQnt : Module {
 
         int pitchIndex;
         double period = scale.back().cents / 1200;
-        vector<TuningStep> _pitches;
+        vector<TuningStep> *_pitches;
 
         if (enabled) {
-            _pitches = enabledPitches;
+            _pitches = &enabledPitches;
             pitchIndex = numEnabledNegativeVoltages + round(v / period * numEnabledSteps);
         } else {
-            _pitches = pitches;
+            _pitches = &pitches;
             pitchIndex = numNegativeVoltages + round(v / period * scale.size());
         }
 
         // return 0 V if there are no (enabled) pitches in the tuning
-        if (_pitches.empty()) {
+        if (_pitches->empty()) {
             int rootIdx = scale.size() - 1;
             return {0.0, rootIdx};
         }
 
         if (pitchIndex < 0) {
-            return _pitches.at(0);
+            return _pitches->at(0);
         }
 
-        if (pitchIndex >= _pitches.size()) {
-            return _pitches.back();
+        if (pitchIndex >= _pitches->size()) {
+            return _pitches->back();
         }
 
-        return _pitches.at(pitchIndex);
+        return _pitches->at(pitchIndex);
     }
 
     // Map consecutive 12-EDO pitches to consecutive pitches in the target tuning, with 0 V <-> 0 V
@@ -371,13 +371,13 @@ struct XenQnt : Module {
     // get the nearest allowable pitch
     inline TuningStep getPitchByProximity(double v, bool enabled) {
 
-        vector<TuningStep> _pitches = pitches;
+        vector<TuningStep> *_pitches = &pitches;
         if (enabled) {
-            _pitches = enabledPitches;
+            _pitches = &enabledPitches;
         }
 
         // return 0 V if there are no (enabled) pitches in the tuning
-        if (_pitches.empty()) {
+        if (_pitches->empty()) {
             int rootIdx = scale.size() - 1;
             return {0.0, rootIdx};
         }
@@ -387,10 +387,10 @@ struct XenQnt : Module {
             return step.voltage < voltage;
         };
 
-        auto ceil = lower_bound(_pitches.begin(), _pitches.end(), v, comp);
-        if (ceil == _pitches.begin()) {
+        auto ceil = lower_bound(_pitches->begin(), _pitches->end(), v, comp);
+        if (ceil == _pitches->begin()) {
             return *ceil;
-        } else if (ceil == _pitches.end()) {
+        } else if (ceil == _pitches->end()) {
             return *(ceil - 1);
         } else {
             auto floor = ceil - 1;
