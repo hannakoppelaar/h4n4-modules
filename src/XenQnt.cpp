@@ -148,17 +148,17 @@ struct XenQnt : Module {
             cvScanTimer = 0.f;
         }
 
-        // Has the user changed the scale?
-        if (!newScale.empty()) {
-            scale.assign(newScale.begin(), newScale.end());
-            newScale.clear();
-            updateTuning();
-        }
-
-        // Has there been a change that requires us te recompute the vectors of allowable pitches?
+        // Has there been a change that requires us te recompute the tuning and potentially update the scale
         if (tuningChangeRequested) {
+            // Has the user changed the scale?
+            if (!newScale.empty()) {
+                scale.assign(newScale.begin(), newScale.end());
+                backupScale = scale;
+                newScale.clear();
+            }
             updateTuning();
             tuningChangeRequested = false;
+            prevInputVolts.clear(); // CV input should also be re-evaluated
         }
 
         // Process CV inputs and update the tuning accordingly (scan once per ms)
@@ -527,6 +527,7 @@ struct XenQnt : Module {
         for (int i = 1; i <= 12; i++) {
             newScale.push_back({ i * 100.f, true });
         }
+        tuningChangeRequested = true;
     }
 
     // enable random notes in the selected tuning
@@ -600,6 +601,7 @@ struct XenQnt : Module {
                 newScale.push_back(ScaleStep{json_real_value(cents), json_boolean_value(enabled) });
             }
         }
+        tuningChangeRequested = true;
     }
 
 };
@@ -663,9 +665,7 @@ struct MenuItemLoadScalaFile : MenuItem {
         if (path) {
             xenQntModule->setScalaDir(getParent(path));
             xenQntModule->updateScale(path);
-            if (xenQntModule->cvConnected) {
-                xenQntModule->backupScale = xenQntModule->scale;
-            }
+            xenQntModule->tuningChangeRequested = true;
             free(path);
         }
     }
@@ -750,24 +750,30 @@ struct XenQntWidget : ModuleWidget {
         menu->addChild(createSubmenuItem("Mapping mode main", "", [ = ](ui::Menu * menu) {
             menu->addChild(createMenuItem("Proximity", CHECKMARK(module->inputMappingMode == proximity), [ = ]() {
                 module->inputMappingMode = proximity;
+                module->tuningChangeRequested = true;
             }));
             menu->addChild(createMenuItem("Proportional", CHECKMARK(module->inputMappingMode == proportional), [ = ]() {
                 module->inputMappingMode = proportional;
+                module->tuningChangeRequested = true;
             }));
             menu->addChild(createMenuItem("12-EDO input", CHECKMARK(module->inputMappingMode == twelveEdoInput), [ = ]() {
                 module->inputMappingMode = twelveEdoInput;
+                module->tuningChangeRequested = true;
             }));
         }));
 
         menu->addChild(createSubmenuItem("Mapping mode CV", "", [ = ](ui::Menu * menu) {
             menu->addChild(createMenuItem("Proximity", CHECKMARK(module->cvMappingMode == proximity), [ = ]() {
                 module->cvMappingMode = proximity;
+                module->tuningChangeRequested = true;
             }));
             menu->addChild(createMenuItem("Proportional", CHECKMARK(module->cvMappingMode == proportional), [ = ]() {
                 module->cvMappingMode = proportional;
+                module->tuningChangeRequested = true;
             }));
             menu->addChild(createMenuItem("12-EDO input", CHECKMARK(module->cvMappingMode == twelveEdoInput), [ = ]() {
                 module->cvMappingMode = twelveEdoInput;
+                module->tuningChangeRequested = true;
             }));
         }));
 

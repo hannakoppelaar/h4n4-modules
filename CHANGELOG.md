@@ -1,6 +1,7 @@
 # CHANGELOG
 
 ## 2.2.1 (2023-03-14)
+- Fixed quirky behavior when connecting or disconnecting CV
 - Fixed performance issue introduced by 2.2.0
 - Fixed issue where a pointer to a local variable was being returned
 
