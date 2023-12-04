@@ -1,5 +1,8 @@
 # CHANGELOG
 
+## 2.3.0 (2023-12-08)
+- Added the option to change to one of the 10 most recently used tunings
+
 ## 2.2.1 (2023-03-14)
 - Fixed quirky behavior when connecting or disconnecting CV
 - Fixed performance issue introduced by 2.2.0
