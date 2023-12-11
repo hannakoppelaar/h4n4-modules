@@ -1,5 +1,8 @@
 # CHANGELOG
 
+## 2.3.1 (2023-12-??)
+- Share the current list of previously used scala files among active instances of the module.
+
 ## 2.3.0 (2023-12-08)
 - Added the option to change to one of the 10 most recently used tunings
 

@@ -339,6 +339,7 @@ struct XenQnt : Module {
         json_t *jsonHistory = json_object_get(root, "history");
 
         if (jsonHistory) {
+            history.clear();
             size_t i;
             json_t *val;
             json_array_foreach(jsonHistory, i, val) {
@@ -785,6 +786,7 @@ struct XenQntWidget : ModuleWidget {
         menu->addChild(createMenuLabel("Tuning: " + module->tuningName));
 
         menu->addChild(createSubmenuItem("Change tuning", "", [ = ](ui::Menu * menu) {
+            module->loadHistory();
             if (module->history.size() < 2) { // Note: if there's only one tuning, it must be the current one
                 menu->addChild(createMenuLabel("History: empty"));
             } else {
