@@ -13,12 +13,11 @@
  * see <https://www.gnu.org/licenses/>.
  */
 #include "plugin.hpp"
+#include "utils.hpp"
 #include <osdialog.h>
 #include "tuning/Tunings.h"
 #include "tuning/TuningsImpl.h"
 #include <iostream>
-#include <sys/types.h>
-#include <sys/stat.h>
 
 
 using namespace std;
@@ -26,6 +25,8 @@ using namespace Tunings;
 
 #define MATRIX_SIZE 36
 #define TWELVE_EDO "12-EDO"
+#define MAX_HISTORY_SIZE 11 // Note: the context menu will show MAX_HISTORY_SIZE - 1 entries
+#define GLOBAL_SETTINGS_FILENAME "H4N4.json"
 
 /*
  * Represents a value in the scala file
@@ -95,6 +96,9 @@ struct XenQnt : Module {
     // last-seen dir with scala files
     std::string scalaDir;
 
+    // list of last ten scala files
+    list<std::string> history;
+
     // the name of the tuning shown in the menu
     std::string tuningName = TWELVE_EDO;
 
@@ -133,6 +137,8 @@ struct XenQnt : Module {
         for (int i = 0; i < MATRIX_SIZE; i++) {
             configButton(STEP_PARAMS + i);
         }
+
+        loadHistory();
 
         onReset();
     }
@@ -282,6 +288,69 @@ struct XenQnt : Module {
         this->tuningName = tuningName;
     }
 
+    // update list of used scala files
+    void updateHistory(const char *path) {
+
+        std::string scalaDir = getParentDir(path);
+        setScalaDir(scalaDir);
+
+        // delete item if it already exists
+        auto it = std::find(history.begin(), history.end(), path);
+        if (it != std::end(history)) {
+            history.erase(it);
+        }
+
+        if (history.size() == MAX_HISTORY_SIZE) {
+            history.pop_back();
+        }
+
+        // finally add the new entry at the head
+        history.push_front(path);
+
+        // now write the history to the global JSON file
+        json_t *root = json_object();
+        json_t *jsonHistory = json_array();
+        for (auto entry = history.begin(); entry != history.end(); entry++) {
+            json_array_append_new(jsonHistory, json_string((*entry).c_str()));
+        }
+        json_object_set_new(root, "history", jsonHistory);
+        std::string settingsFilename = asset::user(GLOBAL_SETTINGS_FILENAME);
+        FILE *file = fopen(settingsFilename.c_str(), "w");
+        if (file) {
+            json_dumpf(root, file, JSON_INDENT(3));
+            fclose(file);
+        }
+    }
+
+    // read history from JSON file
+    void loadHistory() {
+
+        std::string settingsFilename = asset::user(GLOBAL_SETTINGS_FILENAME);
+        FILE *file = fopen(settingsFilename.c_str(), "r");
+
+        if (!file) {
+            return;
+        }
+
+        json_error_t error;
+        json_t *root = json_loadf(file, 0, &error);
+        fclose(file);
+
+        json_t *jsonHistory = json_object_get(root, "history");
+
+        if (jsonHistory) {
+            size_t i;
+            json_t *val;
+            json_array_foreach(jsonHistory, i, val) {
+                history.push_back(json_string_value(val));
+            }
+            if (!history.empty()) {
+                setScalaDir(getParentDir(history.front().c_str()));
+            }
+        }
+    }
+
+
     inline TuningStep getEnabledPitch(double v) {
         switch (inputMappingMode) {
         case proportional:
@@ -403,14 +472,13 @@ struct XenQnt : Module {
     }
 
 
-    void updateScale(char *scalaFile) {
+    void updateScale(const char *scalaFile) {
 
         newScale.clear();
 
         // update the tuning name (i.e. the basename of the scala file)
-        std::string scalaFileStr = scalaFile;
         std::string oldTuningName = tuningName;
-        tuningName = scalaFileStr.substr(scalaFileStr.find_last_of("/\\") + 1);
+        tuningName = getBaseName(scalaFile);
 
         // compare function for sort
         auto comp = [](const ScaleStep & stepLeft, const ScaleStep & stepRight) {
@@ -547,7 +615,6 @@ struct XenQnt : Module {
     json_t *dataToJson() override {
         json_t *root = json_object();
         json_t *jsonScale = json_array();
-        json_t *jsonScalaDir = json_string(scalaDir.c_str());
         json_t *jsonTuningName = json_string(tuningName.c_str());
         json_t *jsonInputMappingMode = json_integer(inputMappingMode);
         json_t *jsonCvMappingMode = json_integer(cvMappingMode);
@@ -562,14 +629,12 @@ struct XenQnt : Module {
         json_object_set_new(root, "inputMappingMode", jsonInputMappingMode);
         json_object_set_new(root, "cvMappingMode", jsonCvMappingMode);
         json_object_set_new(root, "tuningName", jsonTuningName);
-        json_object_set_new(root, "scalaDir", jsonScalaDir);
         json_object_set_new(root, "scale", jsonScale);
         return root;
     }
 
     void dataFromJson(json_t *root) override {
         json_t *jsonScale = json_object_get(root, "scale");
-        json_t *jsonScalaDir = json_object_get(root, "scalaDir");
         json_t *jsonTuningName = json_object_get(root, "tuningName");
         json_t *jsonInputMappingMode = json_object_get(root, "inputMappingMode");
         json_t *jsonCvMappingMode = json_object_get(root, "cvMappingMode");
@@ -587,9 +652,6 @@ struct XenQnt : Module {
             setTuningName(json_string_value(jsonTuningName));
         } else {
             setTuningName("Unknown");
-        }
-        if (jsonScalaDir) {
-            setScalaDir(json_string_value(jsonScalaDir));
         }
         if (jsonScale) {
             newScale.clear();
@@ -623,47 +685,35 @@ struct MenuItemEnableAllNotes : MenuItem {
     }
 };
 
+struct MenuItemHistory : MenuItem {
+    XenQnt *xenQntModule;
+    std::string path;
+    void onAction(const event::Action &e) override {
+        xenQntModule->updateHistory(path.c_str());
+        xenQntModule->updateScale(path.c_str());
+        xenQntModule->tuningChangeRequested = true;
+    }
+};
+
 struct MenuItemLoadScalaFile : MenuItem {
     XenQnt *xenQntModule;
 
-    static inline bool exists(const char *fileName) {
-        struct stat info;
-        if (stat(fileName, &info) != 0) {
-            return false;
-        } else if (info.st_mode & S_IFDIR) {
-            return true;
-        } else {
-            return false;
-        }
-    }
-
-    // Naive attempt to get the parent directory (we're stuck with C++11 for now)
-    // It's okay if this fails, it's just more convenient if it works
-    static inline std::string getParent(char *fileName) {
-        std::string fn = fileName;
-        std::string candidate = fn.substr(0, fn.find_last_of("/\\"));
-        if (exists(candidate.c_str())) {
-            return candidate;
-        } else {
-            return NULL;
-        }
-    }
 
     void onAction(const event::Action &e) override {
 #ifdef USING_CARDINAL_NOT_RACK
         XenQnt *xenQntModule = this->xenQntModule;
         async_dialog_filebrowser(false, nullptr, xenQntModule->scalaDir.c_str(), "Load Scala File", [xenQntModule](char* path) {
-            pathSelected(xenQntModule, path);
+            processSelectedFile(xenQntModule, path);
         });
 #else
         char *path = osdialog_file(OSDIALOG_OPEN, xenQntModule->scalaDir.c_str(), NULL, NULL);
-        pathSelected(xenQntModule, path);
+        processSelectedFile(xenQntModule, path);
 #endif
     }
 
-    static void pathSelected(XenQnt *xenQntModule, char* path) {
+    static void processSelectedFile(XenQnt *xenQntModule, char* path) {
         if (path) {
-            xenQntModule->setScalaDir(getParent(path));
+            xenQntModule->updateHistory(path);
             xenQntModule->updateScale(path);
             xenQntModule->tuningChangeRequested = true;
             free(path);
@@ -730,14 +780,32 @@ struct XenQntWidget : ModuleWidget {
         XenQnt *module = dynamic_cast<XenQnt *>(this->getModule());
         assert(module);
 
-        menu->addChild(new MenuEntry);
+        menu->addChild(new MenuSeparator());
 
         menu->addChild(createMenuLabel("Tuning: " + module->tuningName));
 
-        MenuItemLoadScalaFile *loadScalaFileItem = new MenuItemLoadScalaFile();
-        loadScalaFileItem->text = "Load scala file";
-        loadScalaFileItem->xenQntModule = module;
-        menu->addChild(loadScalaFileItem);
+        menu->addChild(createSubmenuItem("Change tuning", "", [ = ](ui::Menu * menu) {
+            if (module->history.size() < 2) { // Note: if there's only one tuning, it must be the current one
+                menu->addChild(createMenuLabel("History: empty"));
+            } else {
+                for (auto entry = module->history.begin(); entry != module->history.end(); entry++) {
+                    std::string label = getBaseName((*entry).c_str());
+                    if (label.compare(module->tuningName) != 0) {
+                        MenuItemHistory *menuItemHistory = new MenuItemHistory();
+                        menuItemHistory->text = label;
+                        menuItemHistory->xenQntModule = module;
+                        menuItemHistory->path = *entry;
+                        menu->addChild(menuItemHistory);
+                    }
+                }
+            }
+            menu->addChild(new MenuSeparator());
+            MenuItemLoadScalaFile *loadScalaFileItem = new MenuItemLoadScalaFile();
+            loadScalaFileItem->text = "Load scala file";
+            loadScalaFileItem->xenQntModule = module;
+            menu->addChild(loadScalaFileItem);
+        }));
+
         MenuItemDisableAllNotes *disableAllNotesItem = new MenuItemDisableAllNotes();
         disableAllNotesItem->text = "Disable all notes";
         disableAllNotesItem->xenQntModule = module;
@@ -746,6 +814,8 @@ struct XenQntWidget : ModuleWidget {
         enablaAllNotesItem->text = "Enable all notes";
         enablaAllNotesItem->xenQntModule = module;
         menu->addChild(enablaAllNotesItem);
+
+
 
         menu->addChild(createSubmenuItem("Mapping mode main", "", [ = ](ui::Menu * menu) {
             menu->addChild(createMenuItem("Proximity", CHECKMARK(module->inputMappingMode == proximity), [ = ]() {
